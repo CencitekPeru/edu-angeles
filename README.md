@@ -15,7 +15,9 @@ como referencia `.env.example`.
 
 ### Despliegue en Railway
 
-Inicia la API con `npm start`. Configura `DB_HOST`, `DB_PORT`, `DB_USER`,
+Railway debe ejecutar `npm run build` como comando de construcción y `npm start`
+como comando de inicio. El servidor publica el frontend compilado y la API en
+el mismo dominio. Configura `DB_HOST`, `DB_PORT`, `DB_USER`,
 `DB_PASSWORD`, `DB_NAME` y `JWT_SECRET` en las variables del servicio Railway.
 También se admiten las variables MySQL `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`,
 `MYSQLPASSWORD`, `MYSQLDATABASE` o una URL `MYSQL_URL`/`DATABASE_URL`. La API

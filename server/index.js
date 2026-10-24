@@ -3,6 +3,7 @@ import cors from 'cors'
 import express from 'express'
 import jwt from 'jsonwebtoken'
 import { randomBytes } from 'node:crypto'
+import { fileURLToPath } from 'node:url'
 import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
 import { config } from './config.js'
@@ -10,6 +11,7 @@ import { campusRouter, ensureCampus } from './campus.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
 
 const app = express()
+const frontendDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 app.use(cors())
 app.use(express.json())
 app.use(campusRouter())
@@ -414,6 +416,19 @@ app.post('/api/demo/reset', requireAuth, requireAdmin, wrap(async (_req, res) =>
   await ensureCampus()
   res.json({ ok: true })
 }))
+
+app.use(express.static(frontendDirectory))
+app.use((req, res, next) => {
+  if (
+    req.method !== 'GET'
+    || req.path === '/api'
+    || req.path.startsWith('/api/')
+    || !req.accepts('html')
+  ) {
+    return next()
+  }
+  res.sendFile('index.html', { root: frontendDirectory }, next)
+})
 
 app.use((error, _req, res, _next) => {
   console.error(error)
