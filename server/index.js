@@ -417,11 +417,17 @@ app.post('/api/demo/reset', requireAuth, requireAdmin, wrap(async (_req, res) =>
 
 app.use((error, _req, res, _next) => {
   console.error(error)
-  const refused = error?.code === 'ECONNREFUSED' || error?.code === 'PROTOCOL_CONNECTION_LOST'
+  const connectionError = [
+    'ECONNREFUSED',
+    'ETIMEDOUT',
+    'EHOSTUNREACH',
+    'ENOTFOUND',
+    'PROTOCOL_CONNECTION_LOST',
+  ].includes(error?.code)
   res.status(500).json({
     ok: false,
-    error: refused
-      ? 'MySQL no está disponible. Inicia MySQL desde el panel de XAMPP.'
+    error: connectionError
+      ? 'No hay conexión con el servidor MySQL configurado. Verifica el host, el puerto y el acceso de red.'
       : 'No se pudo completar la operación.',
   })
 })
@@ -429,15 +435,23 @@ app.use((error, _req, res, _next) => {
 initDb()
   .then(async () => {
     await ensureCampus()
-    app.listen(config.port, '127.0.0.1', () => {
-      console.log(`API de Nodo en http://127.0.0.1:${config.port}`)
+    app.listen(config.port, '0.0.0.0', () => {
+      console.log(`API de Nodo escuchando en el puerto ${config.port}`)
       console.log(`Base de datos ${config.db.database} en ${config.db.host}:${config.db.port}`)
     })
   })
   .catch((error) => {
     console.error('No se pudo preparar MySQL.')
-    console.error(error.message)
-    console.error('Abre XAMPP y pulsa Start en MySQL. Si root tiene contraseña, crea un archivo .env con DB_PASSWORD.')
+    console.error(`Código del error: ${error.code || 'sin código'}`)
+    if (['ECONNREFUSED', 'ETIMEDOUT', 'EHOSTUNREACH', 'ENOTFOUND'].includes(error.code)) {
+      console.error('Verifica DB_HOST, DB_PORT y que el servicio MySQL permita conexiones desde esta aplicación.')
+    } else if (error.code === 'ER_BAD_DB_ERROR') {
+      console.error('La base de datos indicada por DB_NAME no existe en ese servidor.')
+    } else if (error.code === 'ER_ACCESS_DENIED_ERROR') {
+      console.error('Verifica DB_USER y DB_PASSWORD en las variables de entorno del servicio.')
+    } else {
+      console.error('Verifica las credenciales y permisos de la base de datos configurada.')
+    }
     process.exit(1)
   })
 

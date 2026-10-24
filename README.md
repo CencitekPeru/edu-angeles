@@ -13,6 +13,19 @@ La API crea la base de datos `nodo_sala` y las cuentas de demostración en el
 primer inicio. Si MySQL usa otra configuración, crea un archivo `.env` tomando
 como referencia `.env.example`.
 
+### Despliegue en Railway
+
+Inicia la API con `npm start`. Configura `DB_HOST`, `DB_PORT`, `DB_USER`,
+`DB_PASSWORD`, `DB_NAME` y `JWT_SECRET` en las variables del servicio Railway.
+También se admiten las variables MySQL `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`,
+`MYSQLPASSWORD`, `MYSQLDATABASE` o una URL `MYSQL_URL`/`DATABASE_URL`. La API
+escucha en `0.0.0.0` usando el puerto asignado por Railway en `PORT`. En
+producción, `JWT_SECRET` debe tener al menos 32 caracteres.
+
+Las variables de Railway solo están disponibles dentro del servicio desplegado.
+Para usar la base remota desde una ejecución local, configura las mismas
+variables en un archivo `.env` local y no lo subas al repositorio.
+
 Desde el panel de administración, la sección **Materiales** permite llevar las
 existencias de mobiliario escolar y otros recursos, con categoría, ubicación,
 estado y observaciones. La sección **Equipos** sigue dedicada a los equipos

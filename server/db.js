@@ -10,25 +10,32 @@ export function getPool() {
 }
 
 export async function initDb() {
-  const { database, ...server } = config.db
+  const { host, database, ...server } = config.db
   if (!/^[a-zA-Z0-9_]+$/.test(database)) {
     throw new Error('El nombre de la base de datos no es válido.')
   }
 
-  const bootstrap = await mysql.createConnection(server)
-  await bootstrap.query(
-    `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-  )
-  await bootstrap.end()
+  if (['localhost', '127.0.0.1', '::1'].includes(host.toLowerCase())) {
+    const bootstrap = await mysql.createConnection({ host, ...server })
+    try {
+      await bootstrap.query(
+        `CREATE DATABASE IF NOT EXISTS \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+      )
+    } finally {
+      await bootstrap.end()
+    }
+  }
 
   pool = mysql.createPool({
     ...config.db,
     waitForConnections: true,
     connectionLimit: 10,
+    connectTimeout: 15000,
     dateStrings: true,
     charset: 'utf8mb4',
   })
 
+  await pool.query('SELECT 1')
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

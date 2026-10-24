@@ -7,6 +7,7 @@
     "dev": "npm run dev:stack",
     "dev:web": "vite",
     "server": "node --watch server/index.js",
+    "start": "node server/index.js",
     "dev:stack": "concurrently -n web,api -c green,blue \"vite --host 127.0.0.1 --port 5173\" \"node --watch server/index.js\"",
     "build": "vite build",
     "lint": "oxlint",
