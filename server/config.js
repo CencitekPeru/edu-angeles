@@ -45,7 +45,9 @@ if (!Number.isInteger(db.port) || db.port < 1 || db.port > 65535) {
   throw new Error('La variable del puerto MySQL debe ser válida.')
 }
 if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || jwtSecret.length < 32)) {
-  throw new Error('Configura JWT_SECRET con al menos 32 caracteres en producción.')
+  throw new Error(
+    'JWT_SECRET falta o es demasiado corto. En Railway, configura JWT_SECRET en las Variables del servicio de la API con una clave aleatoria de al menos 32 caracteres y vuelve a desplegar.',
+  )
 }
 
 export const config = {

@@ -22,6 +22,11 @@ También se admiten las variables MySQL `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`,
 escucha en `0.0.0.0` usando el puerto asignado por Railway en `PORT`. En
 producción, `JWT_SECRET` debe tener al menos 32 caracteres.
 
+Genera una clave segura localmente con `node -p "require('node:crypto').randomBytes(48).toString('base64url')"`
+y copia el resultado directamente en **Variables** del servicio de la API en
+Railway con el nombre `JWT_SECRET` (sin añadir comillas). Guarda los cambios y
+vuelve a desplegar. No pongas el valor en el código ni lo compartas en chats.
+
 Las variables de Railway solo están disponibles dentro del servicio desplegado.
 Para usar la base remota desde una ejecución local, configura las mismas
 variables en un archivo `.env` local y no lo subas al repositorio.
