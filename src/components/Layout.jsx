@@ -20,15 +20,12 @@ import {
   UserPlus,
   UserRound,
   Users,
-  Wifi,
-  WifiOff,
   Wrench,
   X,
 } from 'lucide-react'
 import { SCHOOL } from '../lib/school'
 import { useApp } from '../context/AppContext'
 import { Avatar } from '@/components/ui/avatar'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -189,18 +186,6 @@ export default function Layout() {
 
             {/* Right side controls */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {offline ? (
-                <Badge variant="destructive" className="gap-1 font-bold">
-                  <WifiOff className="size-3" />
-                  <span className="hidden sm:inline">Sin conexión</span>
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 bg-emerald-500/5 hidden sm:inline-flex">
-                  <Wifi className="size-3" />
-                  <span>En línea</span>
-                </Badge>
-              )}
-
               <ThemeToggle />
               <NotificationBell />
 

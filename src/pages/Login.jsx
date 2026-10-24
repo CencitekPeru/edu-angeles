@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, Laptop, LogIn, ShieldCheck, Sparkles, UserCheck } from 'lucide-react'
+import { AlertCircle, Laptop, LogIn, Sparkles } from 'lucide-react'
 import campusBackground from '../assets/login-campus.jpg'
 import { useApp } from '../context/AppContext'
 import { SCHOOL } from '../lib/school'
@@ -10,12 +10,6 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ThemeToggle } from '@/components/ThemeToggle'
-
-const demos = [
-  { label: 'Coordinación CIST', detail: 'Laura Méndez', email: 'admin@colegio.edu', dni: '12345678', icon: ShieldCheck },
-  { label: 'Matemáticas', detail: 'María López', email: 'maria.lopez@colegio.edu', dni: '23456789', icon: UserCheck },
-  { label: 'Informática', detail: 'Ana Torres', email: 'ana.torres@colegio.edu', dni: '45678901', icon: UserCheck },
-]
 
 export default function Login() {
   const { login, offline } = useApp()
@@ -183,43 +177,6 @@ export default function Login() {
                 </Button>
               </form>
 
-              {/* Demo quick accounts */}
-              <div className="pt-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
-                  Acceso rápido de prueba
-                </p>
-                <div className="space-y-1.5">
-                  {demos.map((account) => {
-                    const Icon = account.icon
-                    return (
-                      <button
-                        key={account.email}
-                        type="button"
-                        className="w-full flex items-center justify-between p-2.5 rounded-lg border border-border/70 bg-card hover:bg-muted/50 hover:border-border transition-all text-left group"
-                        onClick={() => {
-                          setEmail(account.email)
-                          setDni(account.dni)
-                          setError('')
-                          submit(account.email, account.dni)
-                        }}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="flex size-7 items-center justify-center rounded-md bg-primary/10 text-primary shrink-0 group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
-                            <Icon className="size-3.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-foreground truncate">{account.detail}</p>
-                            <p className="text-[10px] text-muted-foreground truncate">{account.label} · {account.email}</p>
-                          </div>
-                        </div>
-                        <span className="text-[11px] font-semibold text-primary shrink-0 ml-2">
-                          Usar
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
             </CardContent>
           </Card>
         </div>
