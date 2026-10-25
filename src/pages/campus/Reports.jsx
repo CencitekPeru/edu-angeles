@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { api } from '../../lib/api'
 import { WEEKDAYS } from '../../lib/school'
+import { GRADES, SECTIONS } from '../../lib/reservations'
 import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -112,7 +113,7 @@ export function DocumentsPage() {
 export function FixedHoursPage() {
   const { user, users, rooms, toast } = useApp()
   const [rows, setRows] = useState([])
-  const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: '8°', section: 'A', purpose: 'Horario fijo' })
+  const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
   const [openHour, setOpenHour] = useState(false)
 
   async function load() {
@@ -150,6 +151,10 @@ export function FixedHoursPage() {
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Inicio"><Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /></Field>
                 <Field label="Fin"><Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Grado"><Choice value={form.grade} onChange={(value) => setForm({ ...form, grade: value })} options={GRADES.map((grade) => ({ value: grade, label: grade }))} /></Field>
+                <Field label="Sección"><Choice value={form.section} onChange={(value) => setForm({ ...form, section: value })} options={SECTIONS.map((section) => ({ value: section, label: section }))} /></Field>
               </div>
               <Field label="Finalidad"><Input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} /></Field>
               <DialogFooter>

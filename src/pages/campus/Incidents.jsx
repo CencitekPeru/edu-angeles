@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { INCIDENT_STATUS } from '../../lib/school'
 import { useApp } from '../../context/AppContext'
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Choice, Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { Filters, Panel, Pill, Table } from './kit'
 
@@ -26,7 +28,15 @@ export function IncidentsPage() {
   const [after, setAfter] = useState([])
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
+  const [equipmentSearchOpen, setEquipmentSearchOpen] = useState(false)
+  const [equipmentSearch, setEquipmentSearch] = useState('')
   const [filters, setFilters] = useState({ q: '', status: '', priority: '' })
+  const selectedEquipment = equipment.find((item) => String(item.id) === String(form.equipmentId))
+  const matchingEquipment = equipment.filter((item) =>
+    `${item.code} ${item.name} ${item.brand} ${item.model} ${item.serial} ${item.mac}`
+      .toLowerCase()
+      .includes(equipmentSearch.trim().toLowerCase()),
+  )
 
   async function load() {
     const params = new URLSearchParams(filters)
@@ -68,7 +78,55 @@ export function IncidentsPage() {
             <DialogDescription>La falla queda vinculada al código del equipo.</DialogDescription>
           </DialogHeader>
           <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
-            <Field label="Equipo del inventario *" className="sm:col-span-2"><Choice value={form.equipmentId} onChange={(value) => setForm({ ...form, equipmentId: value })} options={equipment.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} /></Field>
+            <Field label="Equipo del inventario *" className="sm:col-span-2">
+              <Popover open={equipmentSearchOpen} onOpenChange={setEquipmentSearchOpen}>
+                <PopoverTrigger asChild>
+                  <Button type="button" variant="outline" role="combobox" aria-expanded={equipmentSearchOpen} className="w-full justify-between font-normal">
+                    {selectedEquipment ? (
+                      <span className="truncate text-left">
+                        {selectedEquipment.code} · {selectedEquipment.name}
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          MAC: {selectedEquipment.mac || '—'} · Serie: {selectedEquipment.serial || '—'}
+                        </span>
+                      </span>
+                    ) : 'Buscar equipo por nombre, código, MAC o serie'}
+                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-2">
+                  <Input
+                    autoFocus
+                    placeholder="Buscar por nombre, código, MAC o serie"
+                    value={equipmentSearch}
+                    onChange={(event) => setEquipmentSearch(event.target.value)}
+                  />
+                  <div className="mt-2 max-h-60 overflow-y-auto">
+                    {matchingEquipment.length ? matchingEquipment.map((item) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
+                        onClick={() => {
+                          setForm({ ...form, equipmentId: String(item.id) })
+                          setEquipmentSearchOpen(false)
+                          setEquipmentSearch('')
+                        }}
+                      >
+                        <Check className={`mt-0.5 size-4 shrink-0 ${String(item.id) === String(form.equipmentId) ? 'opacity-100' : 'opacity-0'}`} />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-medium">{item.code} · {item.name}</span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            MAC: {item.mac || '—'} · Serie: {item.serial || '—'}
+                          </span>
+                        </span>
+                      </button>
+                    )) : (
+                      <p className="px-2 py-4 text-center text-sm text-muted-foreground">No se encontraron equipos.</p>
+                    )}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </Field>
             <Field label="Prioridad"><Choice value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={[{ value: 'alta', label: 'Alta' }, { value: 'media', label: 'Media' }, { value: 'baja', label: 'Baja' }]} /></Field>
             <Field label="Seguimiento"><Choice value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={Object.entries(INCIDENT_STATUS).map(([id, label]) => ({ value: id, label }))} /></Field>
             {admin && <Field label="Responsable"><Choice value={form.assigneeId || 'ninguno'} onChange={(value) => setForm({ ...form, assigneeId: value === 'ninguno' ? '' : value })} options={[{ value: 'ninguno', label: 'Sin asignar' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} /></Field>}
@@ -95,12 +153,14 @@ export function IncidentsPage() {
           { key: 'code', label: 'Código' },
           { key: 'reportedOn', label: 'Fecha' },
           { key: 'equipment', label: 'Equipo', render: (row) => `${row.equipmentCode} · ${row.equipmentName}` },
+          { key: 'equipmentMac', label: 'MAC', render: (row) => row.equipmentMac || '—' },
+          { key: 'equipmentSerial', label: 'Serie', render: (row) => row.equipmentSerial || '—' },
           { key: 'title', label: 'Falla' },
-          { key: 'priority', label: 'Prioridad', render: (row) => <Pill value={row.priority} /> },
-          { key: 'status', label: 'Estado', render: (row) => <Pill value={row.status} /> },
+          { key: 'priority', label: 'Prioridad', render: (row) => <Pill value={row.priority} solid /> },
+          { key: 'status', label: 'Estado', render: (row) => <Pill value={row.status} solid /> },
           { key: 'assignee', label: 'Responsable' },
           { key: 'solution', label: 'Solución', render: (row) => row.solution || '—' },
-          { key: 'actions', label: '', render: (row) => admin ? <Button type="button" variant="ghost" size="sm" onClick={() => { setEditing(row.id); setForm({ ...empty, ...row, assigneeId: row.assigneeId || '' }); setOpen(true) }}>Atender</Button> : null },
+          { key: 'actions', label: '', render: (row) => admin ? <Button type="button" size="sm" className="bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => { setEditing(row.id); setForm({ ...empty, ...row, assigneeId: row.assigneeId || '' }); setOpen(true) }}>Atender</Button> : null },
         ]} />
       </Panel>
     </div>

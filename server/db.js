@@ -135,13 +135,13 @@ async function seed() {
   const idOf = (email) => users.find((user) => user.email === email).id
   const [d0, d1, d2] = upcomingWeekdays(3)
   const rows = [
-    [idOf('maria.lopez@colegio.edu'), d0, '08:00', '09:30', '8°', 'A', 28, 'Ecuaciones lineales con hoja de cálculo', 'Usaremos los equipos del lado de la ventana.', 'approved', ''],
-    [idOf('carlos.ruiz@colegio.edu'), d0, '10:00', '11:30', '9°', 'B', 26, 'Simulación de circuitos eléctricos', '', 'approved', ''],
-    [idOf('ana.torres@colegio.edu'), d1, '07:30', '09:00', '11°', 'A', 30, 'Introducción a hojas de cálculo', '', 'approved', ''],
-    [idOf('diego.herrera@colegio.edu'), d1, '09:30', '11:00', '10°', 'B', 22, 'Laboratorio de listening y pronunciación', 'El grupo necesita audífonos.', 'pending', ''],
-    [idOf('maria.lopez@colegio.edu'), d1, '08:00', '09:30', '7°', 'A', 29, 'Gráficas de funciones en GeoGebra', '', 'pending', ''],
+    [idOf('maria.lopez@colegio.edu'), d0, '08:00', '09:30', '3°', 'A', 28, 'Ecuaciones lineales con hoja de cálculo', 'Usaremos los equipos del lado de la ventana.', 'approved', ''],
+    [idOf('carlos.ruiz@colegio.edu'), d0, '10:00', '11:30', '4°', 'B', 26, 'Simulación de circuitos eléctricos', '', 'approved', ''],
+    [idOf('ana.torres@colegio.edu'), d1, '07:30', '09:00', '6°', 'A', 30, 'Introducción a hojas de cálculo', '', 'approved', ''],
+    [idOf('diego.herrera@colegio.edu'), d1, '09:30', '11:00', '5°', 'B', 22, 'Laboratorio de listening y pronunciación', 'El grupo necesita audífonos.', 'pending', ''],
+    [idOf('maria.lopez@colegio.edu'), d1, '08:00', '09:30', '2°', 'A', 29, 'Gráficas de funciones en GeoGebra', '', 'pending', ''],
     [idOf('carlos.ruiz@colegio.edu'), d2, '13:00', '14:30', '6°', 'C', 24, 'Indagación sobre el sistema solar', '', 'rejected', 'Ese bloque queda para mantenimiento de equipos.'],
-    [idOf('ana.torres@colegio.edu'), d2, '14:00', '15:30', '9°', 'A', 27, 'Presentaciones del proyecto de investigación', '', 'approved', ''],
+    [idOf('ana.torres@colegio.edu'), d2, '14:00', '15:30', '5°', 'A', 27, 'Presentaciones del proyecto de investigación', '', 'approved', ''],
   ]
   for (const row of rows) {
     await pool.query(

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AlertCircle, Check, Minus, Clock, Calendar } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -24,7 +24,7 @@ function initialForm(params, rooms) {
     date: date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : nextBookableDate(),
     startTime: start,
     endTime: end,
-    grade: '8°',
+    grade: '1°',
     section: 'A',
     students: '24',
     purpose: '',
@@ -32,13 +32,40 @@ function initialForm(params, rooms) {
   }
 }
 
-export default function NewRequest({ inline = false, onComplete, onCancel }) {
+export default function NewRequest({
+  inline = false,
+  calendarMode = false,
+  initialDate = '',
+  initialRoomId = '',
+  onDateChange,
+  onRoomChange,
+  onComplete,
+  onCancel,
+}) {
   const { user, requests, users, rooms, fixedSchedules, createRequest, toast } = useApp()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const [form, setForm] = useState(() => initialForm(params, rooms))
+  const [form, setForm] = useState(() => {
+    const initial = initialForm(params, rooms)
+    return {
+      ...initial,
+      date: initialDate || initial.date,
+      roomId: initialRoomId ? Number(initialRoomId) : initial.roomId,
+    }
+  })
   const [submitted, setSubmitted] = useState(false)
   const [sending, setSending] = useState(false)
+
+  useEffect(() => {
+    if (initialDate) setForm((current) => current.date === initialDate ? current : { ...current, date: initialDate })
+  }, [initialDate])
+
+  useEffect(() => {
+    if (initialRoomId) {
+      const room = Number(initialRoomId)
+      setForm((current) => current.roomId === room ? current : { ...current, roomId: room })
+    }
+  }, [initialRoomId])
 
   // Ensure default roomId if none set and rooms become available
   const activeRoomId = form.roomId || (rooms[0] ? rooms[0].id : '')
@@ -62,6 +89,8 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
   }, [requests, form, activeRoomId, user.id, fixedSchedules])
 
   function update(partial) {
+    if (partial.date) onDateChange?.(partial.date)
+    if (partial.roomId) onRoomChange?.(partial.roomId)
     setForm((current) => {
       const next = { ...current, ...partial }
       if (partial.startTime) {
@@ -84,8 +113,13 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
       return
     }
     toast('Solicitud enviada con éxito. Coordinación CIST la revisará.')
+    if (calendarMode) {
+      const initial = initialForm(new URLSearchParams(), rooms)
+      setForm({ ...initial, date: initialDate || initial.date, roomId: activeRoomId })
+      setSubmitted(false)
+    }
     if (onComplete) onComplete()
-    else navigate('/panel/solicitudes')
+    else if (!calendarMode) navigate('/panel/solicitudes')
   }
 
   const show = (key) => (submitted ? check.errors[key] : '')
@@ -103,9 +137,11 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
     <>
       {inline ? (
         <div className="mb-5">
-          <h2 className="text-lg font-bold">Nueva reserva de sala de cómputo</h2>
+          <h2 className="text-lg font-bold">{calendarMode ? 'Solicitar horario' : 'Nueva reserva de sala de cómputo'}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Completa los datos de la clase y verifica la disponibilidad antes de enviar la solicitud.
+            {calendarMode
+              ? 'Elige el horario y completa los datos para solicitar la sala.'
+              : 'Completa los datos de la clase y verifica la disponibilidad antes de enviar la solicitud.'}
           </p>
         </div>
       ) : (
@@ -120,34 +156,15 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
         </DialogHeader>
       )}
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <form className="space-y-4" onSubmit={onSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Sala de cómputo *" error={show('roomId')}>
-                <Choice
-                  value={activeRoomId}
-                  onChange={(value) => update({ roomId: Number(value) })}
-                  options={rooms.map((room) => ({ value: room.id, label: room.name }))}
-                />
-              </Field>
-
-              <Field label="Fecha de la clase *" error={show('date')}>
+      <div className={`grid items-start gap-6 ${calendarMode ? '' : 'lg:grid-cols-[minmax(0,1fr)_320px]'}`}>
+          <form className={calendarMode ? 'space-y-3' : 'space-y-4'} onSubmit={onSubmit}>
+            <div className={calendarMode ? 'grid grid-cols-2 gap-3' : 'grid gap-3 sm:grid-cols-2'}>
+              <Field label="Fecha de la clase *" error={show('date')} className={calendarMode ? 'col-span-2' : ''}>
                 <Input
                   type="date"
                   value={form.date}
                   min={nextBookableDate()}
                   onChange={(event) => update({ date: event.target.value })}
-                  required
-                />
-              </Field>
-
-              <Field label="Cantidad de estudiantes *" error={show('students')} hint={`Límite de la sala: ${LAB.capacity}`}>
-                <Input
-                  type="number"
-                  min="1"
-                  max={LAB.capacity}
-                  value={form.students}
-                  onChange={(event) => update({ students: event.target.value })}
                   required
                 />
               </Field>
@@ -168,6 +185,14 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
                 />
               </Field>
 
+              <Field label="Sala de cómputo *" error={show('roomId')} className={calendarMode ? 'col-span-2' : ''}>
+                <Choice
+                  value={activeRoomId}
+                  onChange={(value) => update({ roomId: Number(value) })}
+                  options={rooms.map((room) => ({ value: room.id, label: room.name }))}
+                />
+              </Field>
+
               <Field label="Grado *" error={show('grade')}>
                 <Choice
                   value={form.grade}
@@ -183,6 +208,22 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
                   options={SECTIONS.map((section) => ({ value: section, label: section }))}
                 />
               </Field>
+
+              <Field
+                label="Cantidad de estudiantes *"
+                error={show('students')}
+                hint={`Límite de la sala: ${LAB.capacity}`}
+                className={calendarMode ? 'col-span-2' : ''}
+              >
+                <Input
+                  type="number"
+                  min="1"
+                  max={LAB.capacity}
+                  value={form.students}
+                  onChange={(event) => update({ students: event.target.value })}
+                  required
+                />
+              </Field>
             </div>
 
             <Field label="Propósito pedagógico / Actividad *" error={show('purpose')}>
@@ -195,14 +236,30 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
               />
             </Field>
 
-            <Field label="Notas o requerimientos especiales para CIST" hint="Opcional" error={show('notes')}>
-              <Textarea
-                value={form.notes}
-                maxLength={240}
-                placeholder="Ej. Se requiere proyector multimedia encendido e internet estable."
-                onChange={(event) => update({ notes: event.target.value })}
-              />
-            </Field>
+            {calendarMode ? (
+              <details className="rounded-md border border-border/70 px-3 py-2">
+                <summary className="cursor-pointer text-xs font-semibold text-muted-foreground">
+                  Notas o requerimientos especiales (opcional)
+                </summary>
+                <Field className="mt-3" error={show('notes')}>
+                  <Textarea
+                    value={form.notes}
+                    maxLength={240}
+                    placeholder="Ej. Se requiere proyector multimedia encendido e internet estable."
+                    onChange={(event) => update({ notes: event.target.value })}
+                  />
+                </Field>
+              </details>
+            ) : (
+              <Field label="Notas o requerimientos especiales para CIST" hint="Opcional" error={show('notes')}>
+                <Textarea
+                  value={form.notes}
+                  maxLength={240}
+                  placeholder="Ej. Se requiere proyector multimedia encendido e internet estable."
+                  onChange={(event) => update({ notes: event.target.value })}
+                />
+              </Field>
+            )}
 
             {(check.errors.limit || (submitted && check.errors.endTime)) && (
               <p className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">
@@ -235,18 +292,31 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
               </div>
             )}
 
-            <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => (onCancel ? onCancel() : navigate('/panel/calendario'))}>
-                Cancelar
-              </Button>
+            <DialogFooter className={`pt-2 ${calendarMode ? 'flex-col-reverse sm:flex-row' : ''}`}>
+              {calendarMode ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSubmitted(false)
+                    setForm({ ...initialForm(new URLSearchParams(), rooms), date: form.date, roomId: activeRoomId })
+                  }}
+                >
+                  Limpiar
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={() => (onCancel ? onCancel() : navigate('/panel/calendario'))}>
+                  Cancelar
+                </Button>
+              )}
               <Button type="submit" disabled={sending}>
-                {sending ? 'Enviando...' : 'Enviar solicitud'}
+                {sending ? 'Enviando...' : calendarMode ? 'Enviar solicitud' : 'Enviar solicitud'}
               </Button>
             </DialogFooter>
           </form>
 
           {/* Sidebar validation rules & Timeline */}
-          <aside className="space-y-4">
+          {!calendarMode && <aside className="space-y-4">
             <Card className="border-border/80">
               <CardContent className="p-4">
                 <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground mb-3">
@@ -308,7 +378,7 @@ export default function NewRequest({ inline = false, onComplete, onCancel }) {
                 }
               />
             </div>
-          </aside>
+          </aside>}
       </div>
     </>
   )

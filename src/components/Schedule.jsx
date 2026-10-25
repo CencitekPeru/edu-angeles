@@ -6,12 +6,12 @@ import {
   dayParts,
   formatWeekRange,
   fromMinutes,
+  parseISODate,
   schoolWeek,
   todayISO,
   toMinutes,
 } from '../lib/time'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 
 const PX = 0.84
@@ -152,10 +152,11 @@ export function DayTimeline({ date, requests, users, preview }) {
   )
 }
 
-export function WeekBoard({ requests, users, canReserve = false, onReserve }) {
-  const [anchor, setAnchor] = useState(() => new Date())
+export function WeekBoard({ requests, users, canReserve = false, initialDate = todayISO(), onReserve }) {
+  const [anchor, setAnchor] = useState(() => parseISODate(initialDate))
   const [compact, setCompact] = useState(false)
   const [dayIndex, setDayIndex] = useState(0)
+  const [viewMode, setViewMode] = useState('week')
   const days = schoolWeek(anchor)
 
   useEffect(() => {
@@ -167,10 +168,13 @@ export function WeekBoard({ requests, users, canReserve = false, onReserve }) {
   }, [])
 
   useEffect(() => {
-    const today = todayISO()
-    const index = schoolWeek(anchor).indexOf(today)
+    const index = schoolWeek(anchor).indexOf(initialDate)
     setDayIndex(index >= 0 ? index : 0)
-  }, [anchor])
+  }, [anchor, initialDate])
+
+  useEffect(() => {
+    setAnchor((current) => schoolWeek(current).includes(initialDate) ? current : parseISODate(initialDate))
+  }, [initialDate])
 
   const shift = (amount) => setAnchor((current) => {
     const next = new Date(current)
@@ -186,35 +190,42 @@ export function WeekBoard({ requests, users, canReserve = false, onReserve }) {
             <p className="text-base font-extrabold text-foreground">{formatWeekRange(days)}</p>
             <p className="text-xs text-muted-foreground">Lunes a viernes · {LAB.open} a {LAB.close}</p>
           </div>
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="icon-sm" onClick={() => shift(-7)} aria-label="Semana anterior">
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())} className="text-xs font-bold">
-              Hoy
-            </Button>
-            <Button variant="outline" size="icon-sm" onClick={() => shift(7)} aria-label="Semana siguiente">
-              <ChevronRight className="size-4" />
-            </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <Button variant="outline" size="icon-sm" onClick={() => shift(-7)} aria-label="Semana anterior">
+                <ChevronLeft className="size-4" />
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setAnchor(new Date())} className="text-xs font-bold">
+                Hoy
+              </Button>
+              <Button variant="outline" size="icon-sm" onClick={() => shift(7)} aria-label="Semana siguiente">
+                <ChevronRight className="size-4" />
+              </Button>
+            </div>
+            {!compact && (
+              <div className="flex items-center rounded-lg border border-border/80 p-0.5">
+                <Button
+                  variant={viewMode === 'week' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={() => setViewMode('week')}
+                >
+                  Semana
+                </Button>
+                <Button
+                  variant={viewMode === 'day' ? 'default' : 'ghost'}
+                  size="sm"
+                  className="h-7 px-3 text-xs"
+                  onClick={() => setViewMode('day')}
+                >
+                  Día
+                </Button>
+              </div>
+            )}
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3 text-xs">
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <span className="size-2 rounded-full bg-indigo-600" />
-            Horario fijo
-          </Badge>
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <span className="size-2 rounded-full bg-emerald-600" />
-            Confirmada
-          </Badge>
-          <Badge variant="outline" className="gap-1.5 text-xs">
-            <span className="size-2 rounded-full bg-amber-500" />
-            Pendiente
-          </Badge>
-        </div>
-
-        {compact ? (
+        {compact || viewMode === 'day' ? (
           <CompactDays
             days={days}
             dayIndex={dayIndex}
@@ -280,12 +291,13 @@ function DayColumn({ date, requests, users, canReserve, onReserve }) {
           <Button
             type="button"
             variant="ghost"
-            size="xs"
-            className="text-[10px] font-bold text-primary hover:bg-primary hover:text-primary-foreground gap-1 px-1.5"
+            size="icon-xs"
+            className="text-primary hover:bg-primary hover:text-primary-foreground"
+            aria-label={`Solicitar horario para el ${parts.weekday} ${parts.number}`}
+            title="Solicitar horario"
             onClick={() => onReserve(date)}
           >
             <Plus className="size-3" />
-            Apartar
           </Button>
         )}
       </div>

@@ -23,7 +23,7 @@ export function Panel({ title, action, children, className = '' }) {
   )
 }
 
-export function Pill({ value }) {
+export function Pill({ value, className, solid = false }) {
   const tones = {
     Operativo: 'success',
     Bueno: 'success',
@@ -54,9 +54,16 @@ export function Pill({ value }) {
   }
   const variant = tones[value] || 'secondary'
   const display = labels[value] || value
+  const solidTones = {
+    success: 'border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600 dark:text-white',
+    warning: 'border-amber-700 bg-amber-600 text-white dark:border-amber-500 dark:bg-amber-600 dark:text-white',
+    destructive: 'border-rose-700 bg-rose-600 text-white dark:border-rose-500 dark:bg-rose-600 dark:text-white',
+    info: 'border-sky-700 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-600 dark:text-white',
+    secondary: 'border-slate-700 bg-slate-600 text-white dark:border-slate-500 dark:bg-slate-600 dark:text-white',
+  }
 
   return (
-    <Badge variant={variant} className="text-xs font-semibold px-2.5 py-0.5">
+    <Badge variant={variant} className={`text-xs font-semibold px-2.5 py-0.5 ${solid ? solidTones[variant] : ''} ${className || ''}`}>
       {display}
     </Badge>
   )

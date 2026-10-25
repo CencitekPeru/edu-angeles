@@ -126,7 +126,7 @@ export function EquipmentPage() {
       )}
       <Panel title="Listado de equipos registrados">
         <Filters>
-          <Input placeholder="Buscar por nombre, serie o código" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
+          <Input placeholder="Buscar por nombre, serie, código o MAC" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
           <Choice value={filters.category || 'todas'} onChange={(value) => setFilters({ ...filters, category: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las categorías' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} />
           <Choice value={filters.place || 'todos'} onChange={(value) => setFilters({ ...filters, place: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los ambientes' }, ...places.map((item) => ({ value: item.name, label: item.name }))]} />
           <Choice value={filters.state || 'todos'} onChange={(value) => setFilters({ ...filters, state: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los estados' }, ...['Operativo', 'Con fallas', 'Inoperativo'].map((item) => ({ value: item, label: item }))]} />

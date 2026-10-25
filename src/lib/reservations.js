@@ -10,7 +10,7 @@ import {
   toMinutes,
 } from './time.js'
 
-export const GRADES = ['6°', '7°', '8°', '9°', '10°', '11°', 'Capacitación']
+export const GRADES = ['1°', '2°', '3°', '4°', '5°', '6°']
 export const SECTIONS = ['A', 'B', 'C', 'Única']
 
 export const STATUS = {
@@ -90,7 +90,7 @@ export function validateRequest(requests, input, { ignoreId, teacherId } = {}) {
     }
   }
 
-  if (!input.grade) errors.grade = 'Selecciona el grado.'
+  if (!GRADES.includes(input.grade)) errors.grade = 'Selecciona un grado del 1° al 6°.'
   if (!input.section) errors.section = 'Selecciona el grupo.'
   if (!Number.isInteger(students) || students < 1 || students > LAB.capacity) {
     errors.students = `Indica entre 1 y ${LAB.capacity} estudiantes.`

@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { config } from './config.js'
 import { getPool, mapUser } from './db.js'
+import { GRADES, SECTIONS } from '../src/lib/reservations.js'
 
 const uploadDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')
 fs.mkdirSync(uploadDir, { recursive: true })
@@ -48,6 +49,9 @@ export function campusRouter() {
 
   router.post('/api/fixed-schedules', requireAuth, requireAdmin, wrap(async (req, res) => {
     const body = req.body || {}
+    if (!GRADES.includes(String(body.grade || '')) || !SECTIONS.includes(String(body.section || ''))) {
+      return res.status(400).json({ ok: false, error: 'Selecciona un grado del 1° al 6° y una sección válida.' })
+    }
     await getPool().query(
       `INSERT INTO fixed_schedules (teacher_id, room_id, weekday, start_time, end_time, grade, section, purpose)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -576,11 +580,11 @@ async function seedCampus(db, labId) {
   )
   if (labId && idOf('maria.lopez@colegio.edu')) {
     const fixed = [
-      [idOf('maria.lopez@colegio.edu'), labId, 1, '08:00', '09:30', '8°', 'A', 'Horario fijo de Matemáticas'],
-      [idOf('maria.lopez@colegio.edu'), labId, 3, '08:00', '09:30', '8°', 'A', 'Horario fijo de Matemáticas'],
-      [idOf('carlos.ruiz@colegio.edu'), labId, 2, '10:00', '11:30', '9°', 'B', 'Horario fijo de Ciencias'],
-      [idOf('carlos.ruiz@colegio.edu'), labId, 4, '10:00', '11:30', '9°', 'B', 'Horario fijo de Ciencias'],
-      [idOf('ana.torres@colegio.edu'), labId, 5, '07:30', '09:00', '11°', 'A', 'Horario fijo de Informática'],
+      [idOf('maria.lopez@colegio.edu'), labId, 1, '08:00', '09:30', '3°', 'A', 'Horario fijo de Matemáticas'],
+      [idOf('maria.lopez@colegio.edu'), labId, 3, '08:00', '09:30', '3°', 'A', 'Horario fijo de Matemáticas'],
+      [idOf('carlos.ruiz@colegio.edu'), labId, 2, '10:00', '11:30', '4°', 'B', 'Horario fijo de Ciencias'],
+      [idOf('carlos.ruiz@colegio.edu'), labId, 4, '10:00', '11:30', '4°', 'B', 'Horario fijo de Ciencias'],
+      [idOf('ana.torres@colegio.edu'), labId, 5, '07:30', '09:00', '6°', 'A', 'Horario fijo de Informática'],
     ]
     for (const row of fixed) {
       await db.query(
@@ -610,7 +614,7 @@ function maintenanceSql() {
 }
 
 function incidentSql() {
-  return `SELECT i.*, e.code AS equipment_code, e.name AS equipment_name, u.name AS assignee_name
+  return `SELECT i.*, e.code AS equipment_code, e.name AS equipment_name, e.mac AS equipment_mac, e.serial AS equipment_serial, u.name AS assignee_name
     FROM incidents i
     JOIN equipment e ON e.id = i.equipment_id
     LEFT JOIN users u ON u.id = i.assignee_id`
@@ -682,6 +686,8 @@ function mapIncident(row) {
     equipmentId: row.equipment_id,
     equipmentCode: row.equipment_code,
     equipmentName: row.equipment_name,
+    equipmentMac: row.equipment_mac || '',
+    equipmentSerial: row.equipment_serial || '',
     priority: row.priority,
     status: row.status,
     assigneeId: row.assignee_id,
@@ -807,7 +813,7 @@ function incidentInput(body) {
 
 function matchesEquipment(item, query) {
   const q = String(query.q || '').toLowerCase()
-  if (q && !`${item.code} ${item.name} ${item.serial} ${item.brand} ${item.model}`.toLowerCase().includes(q)) return false
+  if (q && !`${item.code} ${item.name} ${item.serial} ${item.brand} ${item.model} ${item.mac}`.toLowerCase().includes(q)) return false
   if (query.category && item.category !== query.category) return false
   if (query.place && item.place !== query.place) return false
   if (query.state && item.operationalState !== query.state) return false
