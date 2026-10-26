@@ -76,13 +76,21 @@ app.get('/api/profile', requireAuth, wrap(async (req, res) => {
 }))
 
 app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim()
+  const email = String(req.body.email || '').trim().toLowerCase()
   const dni = String(req.body.dni || '').trim()
+  if (name.length < 5) return res.status(400).json({ ok: false, error: 'Escribe nombre y apellido.' })
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ ok: false, error: 'El correo no es válido.' })
+  }
   if (!/^\d{8}$/.test(dni)) {
     return res.status(400).json({ ok: false, error: 'El DNI debe tener exactamente 8 dígitos.' })
   }
-  const [duplicate] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
-  if (duplicate.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
-  await pool.query('UPDATE users SET dni = ? WHERE id = ?', [dni, req.user.id])
+  const [duplicateEmail] = await pool.query('SELECT id FROM users WHERE email = ? AND id <> ?', [email, req.user.id])
+  if (duplicateEmail.length) return res.status(409).json({ ok: false, error: 'Ese correo ya está registrado.' })
+  const [duplicateDni] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
+  if (duplicateDni.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
+  await pool.query('UPDATE users SET name = ?, email = ?, dni = ? WHERE id = ?', [name, email, dni, req.user.id])
   const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))

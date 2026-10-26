@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Pencil } from 'lucide-react'
+import { Camera, ClipboardList, Clock3, MapPin, Pencil, Trash2, Wrench } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,29 @@ const empty = {
   type: 'Preventivo', status: 'Programado', activities: '', notes: '', responsibleId: '', nextDate: '',
 }
 
+function PhotoPreviews({ files }) {
+  const [previews, setPreviews] = useState([])
+
+  useEffect(() => {
+    const next = files.map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setPreviews(next)
+    return () => next.forEach((preview) => URL.revokeObjectURL(preview.url))
+  }, [files])
+
+  if (!previews.length) return null
+
+  return (
+    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {previews.map(({ file, url }) => (
+        <figure key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-md border border-border/70">
+          <img src={url} alt={`Vista previa: ${file.name}`} className="h-20 w-full object-cover" />
+          <figcaption className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{file.name}</figcaption>
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 export function MaintenancePage({ mode = 'form' }) {
   const { user, toast } = useApp()
   const [rows, setRows] = useState([])
@@ -24,6 +47,8 @@ export function MaintenancePage({ mode = 'form' }) {
   const [photos, setPhotos] = useState([])
   const [editing, setEditing] = useState(null)
   const [open, setOpen] = useState(false)
+  const [deleting, setDeleting] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [filters, setFilters] = useState({ q: '', status: '', category: '', from: '', to: '' })
 
   async function load() {
@@ -61,6 +86,20 @@ export function MaintenancePage({ mode = 'form' }) {
     load()
   }
 
+  async function confirmDelete() {
+    if (!deleting) return
+    setDeleteLoading(true)
+    const result = await api(`/api/maintenance/${deleting.id}`, { method: 'DELETE' })
+    setDeleteLoading(false)
+    if (!result.ok) {
+      toast(result.error || 'No se pudo eliminar el mantenimiento.', 'bad')
+      return
+    }
+    toast(`Mantenimiento ${deleting.code} eliminado.`)
+    setDeleting(null)
+    await load()
+  }
+
   function editRow(row) {
     setEditing(row.id)
     setForm({ ...empty, ...row, equipmentId: row.equipmentId, responsibleId: row.responsibleId || '', scheduledDate: row.date, nextDate: row.nextDate || '' })
@@ -75,26 +114,99 @@ export function MaintenancePage({ mode = 'form' }) {
       </div>
       {user.role === 'admin' && (
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
-            <DialogHeader>
-              <DialogTitle>{editing ? 'Editar mantenimiento' : 'Registrar nuevo mantenimiento'}</DialogTitle>
-              <DialogDescription>{selected ? `${selected.brand} ${selected.model} · Serie ${selected.serial || '—'} · ${selected.place}` : 'Elige el equipo del inventario para vincular la tarea.'}</DialogDescription>
+          <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-5xl">
+            <DialogHeader className="border-b border-border/70 pb-4">
+              <div className="flex items-start gap-3 pr-6">
+                <div className="rounded-lg bg-primary/10 p-2 text-primary"><Wrench className="size-5" /></div>
+                <div>
+                  <DialogTitle>{editing ? 'Editar mantenimiento' : 'Registrar nuevo mantenimiento'}</DialogTitle>
+                  <DialogDescription className="mt-1">
+                    {editing
+                      ? 'Actualiza la programación, el trabajo realizado y su seguimiento.'
+                      : 'Completa los datos para programar y documentar el mantenimiento de un equipo.'}
+                  </DialogDescription>
+                </div>
+              </div>
             </DialogHeader>
-            <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
-              <Field label="Fecha programada *"><Input type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} required /></Field>
-              <Field label="Equipo *"><Choice value={form.equipmentId} onChange={(value) => setForm({ ...form, equipmentId: value })} options={equipment.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} /></Field>
-              <Field label="Hora de inicio"><Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /></Field>
-              <Field label="Hora de fin"><Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></Field>
-              <Field label="Tipo"><Choice value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={['Preventivo', 'Correctivo'].map((item) => ({ value: item, label: item }))} /></Field>
-              <Field label="Estado"><Choice value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={['Programado', 'Pendiente', 'En proceso', 'Realizado'].map((item) => ({ value: item, label: item }))} /></Field>
-              <Field label="Responsable"><Choice value={form.responsibleId || 'cist'} onChange={(value) => setForm({ ...form, responsibleId: value === 'cist' ? '' : value })} options={[{ value: 'cist', label: 'CIST' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
-              <Field label="Próximo mantenimiento"><Input type="date" value={form.nextDate} onChange={(e) => setForm({ ...form, nextDate: e.target.value })} /></Field>
-              <Field label="Actividades realizadas *" className="sm:col-span-2"><Textarea value={form.activities} onChange={(e) => setForm({ ...form, activities: e.target.value })} required /></Field>
-              <Field label="Observaciones" className="sm:col-span-2"><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-              <Field label="Fotografías" className="sm:col-span-2"><Input type="file" accept="image/*" multiple onChange={(e) => setPhotos([...e.target.files])} /></Field>
-              <DialogFooter className="sm:col-span-2">
+            <form onSubmit={save} className="grid gap-4">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <section className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                    <MapPin className="mt-0.5 size-4 text-primary" />
+                    <div>
+                      <h3 className="text-sm font-semibold">1. Equipo y programación</h3>
+                      <p className="text-xs text-muted-foreground">Selecciona el equipo y cuándo se realizará el trabajo.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 p-3">
+                    <Field label="Equipo *">
+                      <Choice value={form.equipmentId} onChange={(value) => setForm({ ...form, equipmentId: value })} placeholder="Seleccionar equipo" options={equipment.map((item) => ({ value: item.id, label: `${item.code} · ${item.name}` }))} />
+                    </Field>
+                    {selected && (
+                      <div className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">{selected.brand} {selected.model}</span>
+                        <span> · Serie: {selected.serial || '—'} · Ubicación: {selected.place || 'Sin asignar'}</span>
+                      </div>
+                    )}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Fecha programada *"><Input type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} required /></Field>
+                      <Field label="Tipo de mantenimiento"><Choice value={form.type} onChange={(value) => setForm({ ...form, type: value })} options={['Preventivo', 'Correctivo'].map((item) => ({ value: item, label: item }))} /></Field>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                    <Clock3 className="mt-0.5 size-4 text-primary" />
+                    <div>
+                      <h3 className="text-sm font-semibold">2. Horario y seguimiento</h3>
+                      <p className="text-xs text-muted-foreground">Define el horario, estado y responsable.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 p-3 sm:grid-cols-2">
+                    <Field label="Hora de inicio"><Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /></Field>
+                    <Field label="Hora de fin"><Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></Field>
+                    <Field label="Estado"><Choice value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={['Programado', 'Pendiente', 'En proceso', 'Realizado'].map((item) => ({ value: item, label: item }))} /></Field>
+                    <Field label="Responsable"><Choice value={form.responsibleId || 'cist'} onChange={(value) => setForm({ ...form, responsibleId: value === 'cist' ? '' : value })} options={[{ value: 'cist', label: 'CIST' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} /></Field>
+                    <Field label="Próximo mantenimiento" className="sm:col-span-2"><Input type="date" value={form.nextDate} onChange={(e) => setForm({ ...form, nextDate: e.target.value })} /></Field>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                    <ClipboardList className="mt-0.5 size-4 text-primary" />
+                    <div>
+                      <h3 className="text-sm font-semibold">3. Trabajo y observaciones</h3>
+                      <p className="text-xs text-muted-foreground">Describe las tareas y cualquier detalle importante.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 p-3">
+                    <Field label="Actividades realizadas *"><Textarea value={form.activities} onChange={(e) => setForm({ ...form, activities: e.target.value })} placeholder="Describe las tareas realizadas o previstas…" className="min-h-24" required /></Field>
+                    <Field label="Observaciones"><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Añade notas complementarias…" className="min-h-20" /></Field>
+                  </div>
+                </section>
+
+                <section className="overflow-hidden rounded-lg border border-border/70">
+                  <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                    <Camera className="mt-0.5 size-4 text-primary" />
+                    <div>
+                      <h3 className="text-sm font-semibold">4. Evidencia fotográfica</h3>
+                      <p className="text-xs text-muted-foreground">Adjunta imágenes para documentar el mantenimiento (opcional).</p>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <div className="grid gap-3">
+                      <Field label="Fotografías" hint={photos.length ? `${photos.length} imagen(es) lista(s) para guardar.` : 'Puedes seleccionar varias imágenes.'}>
+                        <Input type="file" accept="image/*" multiple onChange={(e) => setPhotos(Array.from(e.target.files || []).filter((file) => file.type.startsWith('image/')))} />
+                      </Field>
+                      <PhotoPreviews files={photos} />
+                    </div>
+                  </div>
+                </section>
+              </div>
+              <DialogFooter className="sticky bottom-0 -mx-6 -mb-6 border-t border-border/70 bg-background px-6 py-4">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-                <Button type="submit">Guardar mantenimiento</Button>
+                <Button type="submit">{editing ? 'Guardar cambios' : 'Guardar mantenimiento'}</Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -116,18 +228,50 @@ export function MaintenancePage({ mode = 'form' }) {
             { key: 'equipment', label: 'Equipo', render: (row) => `${row.equipmentCode} · ${row.equipmentName}` },
             { key: 'type', label: 'Tipo' },
             { key: 'place', label: 'Ubicación' },
-            { key: 'status', label: 'Estado', render: (row) => <Pill value={row.status} /> },
+            { key: 'status', label: 'Estado', render: (row) => <Pill value={row.status} solid /> },
             { key: 'responsible', label: 'Responsable' },
             { key: 'next', label: 'Próximo', render: (row) => row.nextDate || '—' },
             { key: 'actions', label: 'Acciones', render: (row) => user.role === 'admin' ? (
-              <Button type="button" size="sm" className="gap-1.5 bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => editRow(row)}>
-                <Pencil className="size-3.5" aria-hidden="true" />
-                Editar
-              </Button>
+              <span className="flex items-center gap-1">
+                <Button type="button" size="sm" className="gap-1.5 bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => editRow(row)}>
+                  <Pencil className="size-3.5" aria-hidden="true" />
+                  Editar
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+                  aria-label={`Eliminar mantenimiento ${row.code}`}
+                  title="Eliminar mantenimiento"
+                  onClick={() => setDeleting(row)}
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </Button>
+              </span>
             ) : '—' },
           ]}
         />
       </Panel>
+      <Dialog open={Boolean(deleting)} onOpenChange={(next) => { if (!next && !deleteLoading) setDeleting(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminación</DialogTitle>
+            <DialogDescription>
+              ¿Deseas eliminar el mantenimiento <span className="font-semibold text-foreground">{deleting?.code}</span>?
+              Esta acción no se puede deshacer. Los repuestos asociados se conservarán sin vínculo a este mantenimiento.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={deleteLoading} onClick={() => setDeleting(null)}>
+              Cancelar
+            </Button>
+            <Button type="button" variant="destructive" disabled={deleteLoading} onClick={confirmDelete}>
+              {deleteLoading ? 'Eliminando…' : 'Sí, eliminar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

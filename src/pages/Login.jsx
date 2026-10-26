@@ -76,8 +76,8 @@ export default function Login() {
           <p className="mt-4 text-base font-medium leading-relaxed text-slate-200">
             Institución Educativa Los Ángeles
           </p>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-200/90 sm:text-base sm:leading-7">
-            La Institución Educativa Los Ángeles, ubicada en {SCHOOL.place}, promueve una educación integral y de calidad. Esta plataforma institucional facilita la gestión académica y tecnológica, apoyando la organización de recursos y el trabajo de la comunidad educativa.
+          <p className="mt-3 max-w-xl text-left text-sm leading-6 text-slate-200/90 sm:text-base sm:leading-7">
+            Sistema para administrar el inventario tecnológico, el mantenimiento, las incidencias y las reservas de espacios de la institución.
           </p>
         </div>
 

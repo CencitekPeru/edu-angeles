@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Plus, Search, Trash2, UserPlus, UserRoundCheck, UserRoundX } from 'lucide-react'
+import { Pencil, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundCheck, UserRoundX } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -11,8 +11,23 @@ import { Avatar, PageHeader } from '../components/ui'
 
 const emptyUser = { name: '', email: '', dni: '', role: 'admin' }
 
+function UserFormSection({ icon, title, description, children }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border/70">
+      <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="grid gap-3 p-3 sm:grid-cols-2">{children}</div>
+    </section>
+  )
+}
+
 export default function Teachers() {
-  const { user: currentUser, users, requests, addUser, updateTeacher, setTeacherActive, deleteTeacher, resetDemo, toast } = useApp()
+  const { user: currentUser, users, requests, addUser, updateTeacher, setTeacherActive, deleteTeacher, toast } = useApp()
   const [query, setQuery] = useState('')
   const [error, setError] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -20,7 +35,6 @@ export default function Teachers() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
-  const [resetOpen, setResetOpen] = useState(false)
 
   const list = users
     .filter((user) => `${user.name} ${user.email} ${user.subject}`.toLowerCase().includes(query.trim().toLowerCase()))
@@ -82,38 +96,44 @@ export default function Teachers() {
         text="Administra las cuentas de Coordinación CIST y revisa los docentes habilitados para reservar salas."
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setResetOpen(true)}>
-              Restablecer demo
-            </Button>
             <Button size="sm" className="gap-2 font-bold" onClick={() => { setNewUser(emptyUser); setError(''); setCreateOpen(true) }}>
               <UserPlus className="size-4" />
-              Nuevo usuario CIST
+              Nuevo usuario
             </Button>
           </div>
         }
       />
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Registrar usuario de coordinación</DialogTitle>
-            <DialogDescription>Crea una cuenta con privilegios administrativos en el sistema CIST.</DialogDescription>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary"><UserPlus className="size-5" /></div>
+              <div>
+                <DialogTitle>Registrar usuario de coordinación</DialogTitle>
+                <DialogDescription className="mt-1">Crea una cuenta con privilegios administrativos en el sistema CIST.</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createUser}>
-            <Field label="Nombre completo *">
-              <Input value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} required />
-            </Field>
-            <Field label="Correo electrónico institucional *">
-              <Input type="email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} required />
-            </Field>
-            <Field label="DNI *" hint="Ingresa los 8 dígitos del documento. Se usará para iniciar sesión.">
-              <Input type="text" inputMode="numeric" autoComplete="off" value={newUser.dni} onChange={(event) => setNewUser({ ...newUser, dni: event.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
-            </Field>
-            <Field label="Rol en el sistema">
-              <Input value="Coordinación CIST" readOnly className="bg-muted text-muted-foreground" />
-            </Field>
+            <UserFormSection icon={<UserRound className="size-4" />} title="Datos de la cuenta" description="Información de identificación y contacto del usuario.">
+              <Field label="Nombre completo *">
+                <Input autoFocus value={newUser.name} onChange={(event) => setNewUser({ ...newUser, name: event.target.value })} required />
+              </Field>
+              <Field label="Correo electrónico institucional *">
+                <Input type="email" value={newUser.email} onChange={(event) => setNewUser({ ...newUser, email: event.target.value })} required />
+              </Field>
+              <Field className="sm:col-span-2" label="DNI *" hint="Ingresa los 8 dígitos del documento. Se usará para iniciar sesión.">
+                <Input type="text" inputMode="numeric" autoComplete="off" value={newUser.dni} onChange={(event) => setNewUser({ ...newUser, dni: event.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
+              </Field>
+            </UserFormSection>
+            <UserFormSection icon={<ShieldCheck className="size-4" />} title="Acceso al sistema" description="El usuario se registrará con permisos de coordinación.">
+              <Field className="sm:col-span-2" label="Rol en el sistema">
+                <Input value="Coordinación CIST" readOnly className="bg-muted text-muted-foreground" />
+              </Field>
+            </UserFormSection>
             {error && <p role="alert" className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</p>}
-            <DialogFooter>
+            <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar usuario'}</Button>
             </DialogFooter>
@@ -202,29 +222,36 @@ export default function Teachers() {
 
       {/* Edit Dialog */}
       <Dialog open={Boolean(editing)} onOpenChange={(next) => { if (!next) setEditing(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar datos del usuario</DialogTitle>
-            <DialogDescription>Modifica la información de {editing?.name}.</DialogDescription>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary"><Pencil className="size-5" /></div>
+              <div>
+                <DialogTitle>Editar datos del usuario</DialogTitle>
+                <DialogDescription className="mt-1">Modifica la información de {editing?.name}.</DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           {editing && (
             <form className="grid gap-4" onSubmit={saveEdit}>
-              <Field label="Nombre completo *">
-                <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
-              </Field>
-              <Field label="Correo electrónico *">
-                <Input type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} required />
-              </Field>
-              <Field label="DNI *">
-                <Input type="text" inputMode="numeric" autoComplete="off" value={editing.dni || ''} onChange={(e) => setEditing({ ...editing, dni: e.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
-              </Field>
-              {editing.role === 'teacher' && (
-                <Field label="Especialidad / Área pedagógica *">
-                  <Input value={editing.subject || ''} onChange={(e) => setEditing({ ...editing, subject: e.target.value })} required />
+              <UserFormSection icon={<UserRound className="size-4" />} title="Datos del usuario" description="Actualiza la información de identificación y contacto.">
+                <Field label="Nombre completo *">
+                  <Input autoFocus value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
                 </Field>
-              )}
+                <Field label="Correo electrónico *">
+                  <Input type="email" value={editing.email} onChange={(e) => setEditing({ ...editing, email: e.target.value })} required />
+                </Field>
+                <Field className="sm:col-span-2" label="DNI *">
+                  <Input type="text" inputMode="numeric" autoComplete="off" value={editing.dni || ''} onChange={(e) => setEditing({ ...editing, dni: e.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
+                </Field>
+                {editing.role === 'teacher' && (
+                  <Field className="sm:col-span-2" label="Especialidad / Área pedagógica *">
+                    <Input value={editing.subject || ''} onChange={(e) => setEditing({ ...editing, subject: e.target.value })} required />
+                  </Field>
+                )}
+              </UserFormSection>
               {error && <p className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</p>}
-              <DialogFooter>
+              <DialogFooter className="border-t border-border/70 pt-4">
                 <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
                 <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</Button>
               </DialogFooter>
@@ -249,32 +276,6 @@ export default function Teachers() {
         </DialogContent>
       </Dialog>
 
-      {/* Reset Demo Dialog */}
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Restablecer datos de demostración</DialogTitle>
-            <DialogDescription>
-              Esto volverá a cargar las cuentas y reservas de prueba predeterminadas en la base de datos.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setResetOpen(false)}>Cancelar</Button>
-            <Button
-              type="button"
-              variant="destructive"
-              onClick={async () => {
-                const res = await resetDemo()
-                setResetOpen(false)
-                if (res.ok) toast('Datos de prueba restablecidos.')
-                else toast(res.error || 'Error al restablecer.', 'bad')
-              }}
-            >
-              Confirmar restablecimiento
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

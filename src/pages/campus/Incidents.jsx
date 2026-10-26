@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Check, ChevronsUpDown, Eye } from 'lucide-react'
+import { Camera, Check, ChevronsUpDown, ClipboardList, Eye, Monitor, Wrench } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { INCIDENT_STATUS } from '../../lib/school'
 import { useApp } from '../../context/AppContext'
@@ -37,6 +37,21 @@ function ImagePreviews({ files, label }) {
         </figure>
       ))}
     </div>
+  )
+}
+
+function IncidentSection({ icon, title, description, children }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border/70">
+      <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+        <span className="mt-0.5 text-primary">{icon}</span>
+        <div>
+          <h3 className="text-sm font-semibold">{title}</h3>
+          <p className="text-xs text-muted-foreground">{description}</p>
+        </div>
+      </div>
+      <div className="grid gap-3 p-3">{children}</div>
+    </section>
   )
 }
 
@@ -121,77 +136,96 @@ export function IncidentsPage() {
           setAfter([])
         }
       }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Actualizar incidencia' : 'Registrar incidencia'}</DialogTitle>
-            <DialogDescription>La falla queda vinculada al código del equipo.</DialogDescription>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary"><Wrench className="size-5" /></div>
+              <div>
+                <DialogTitle>{editing ? 'Actualizar incidencia' : 'Registrar incidencia'}</DialogTitle>
+                <DialogDescription className="mt-1">
+                  Vincula la falla a un equipo y registra el seguimiento y la evidencia de atención.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <form onSubmit={save} className="grid gap-3 sm:grid-cols-2">
-            <Field label="Equipo del inventario *" className="sm:col-span-2">
-              <Popover open={equipmentSearchOpen} onOpenChange={setEquipmentSearchOpen}>
-                <PopoverTrigger asChild>
-                  <Button type="button" variant="outline" role="combobox" aria-expanded={equipmentSearchOpen} className="w-full justify-between font-normal">
-                    {selectedEquipment ? (
-                      <span className="truncate text-left">
-                        {selectedEquipment.code} · {selectedEquipment.name}
-                        <span className="ml-2 text-xs text-muted-foreground">
-                          MAC: {selectedEquipment.mac || '—'} · Serie: {selectedEquipment.serial || '—'}
-                        </span>
-                      </span>
-                    ) : 'Buscar equipo por nombre, código, MAC o serie'}
-                    <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-2">
-                  <Input
-                    autoFocus
-                    placeholder="Buscar por nombre, código, MAC o serie"
-                    value={equipmentSearch}
-                    onChange={(event) => setEquipmentSearch(event.target.value)}
-                  />
-                  <div className="mt-2 max-h-60 overflow-y-auto">
-                    {matchingEquipment.length ? matchingEquipment.map((item) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
-                        onClick={() => {
-                          setForm({ ...form, equipmentId: String(item.id) })
-                          setEquipmentSearchOpen(false)
-                          setEquipmentSearch('')
-                        }}
-                      >
-                        <Check className={`mt-0.5 size-4 shrink-0 ${String(item.id) === String(form.equipmentId) ? 'opacity-100' : 'opacity-0'}`} />
-                        <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium">{item.code} · {item.name}</span>
-                          <span className="block truncate text-xs text-muted-foreground">
-                            MAC: {item.mac || '—'} · Serie: {item.serial || '—'}
+          <form onSubmit={save} className="grid gap-4">
+            <IncidentSection icon={<Monitor className="size-4" />} title="Equipo afectado" description="Busca y selecciona el equipo relacionado con esta incidencia.">
+              <Field label="Equipo del inventario *">
+                <Popover open={equipmentSearchOpen} onOpenChange={setEquipmentSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button type="button" variant="outline" role="combobox" aria-expanded={equipmentSearchOpen} className="w-full justify-between font-normal">
+                      {selectedEquipment ? (
+                        <span className="truncate text-left">
+                          {selectedEquipment.code} · {selectedEquipment.name}
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            MAC: {selectedEquipment.mac || '—'} · Serie: {selectedEquipment.serial || '—'}
                           </span>
                         </span>
-                      </button>
-                    )) : (
-                      <p className="px-2 py-4 text-center text-sm text-muted-foreground">No se encontraron equipos.</p>
-                    )}
-                  </div>
-                </PopoverContent>
-              </Popover>
-            </Field>
-            <Field label="Prioridad"><Choice value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={[{ value: 'alta', label: 'Alta' }, { value: 'media', label: 'Media' }, { value: 'baja', label: 'Baja' }]} /></Field>
-            <Field label="Seguimiento"><Choice value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={Object.entries(INCIDENT_STATUS).map(([id, label]) => ({ value: id, label }))} /></Field>
-            {admin && <Field label="Responsable"><Choice value={form.assigneeId || 'ninguno'} onChange={(value) => setForm({ ...form, assigneeId: value === 'ninguno' ? '' : value })} options={[{ value: 'ninguno', label: 'Sin asignar' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} /></Field>}
-            <Field label="Fecha"><Input type="date" value={form.reportedOn} onChange={(e) => setForm({ ...form, reportedOn: e.target.value })} /></Field>
-            <Field label="Falla *" className="sm:col-span-2"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></Field>
-            <Field label="Descripción" className="sm:col-span-2"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-            <Field label="Solución aplicada" className="sm:col-span-2"><Textarea value={form.solution} onChange={(e) => setForm({ ...form, solution: e.target.value })} /></Field>
-            <Field label="Fotos del problema">
-              <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setBefore)} />
-              <ImagePreviews files={before} label="Foto del problema" />
-            </Field>
-            <Field label="Fotos después de la atención">
-              <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setAfter)} />
-              <ImagePreviews files={after} label="Foto después de la atención" />
-            </Field>
-            <DialogFooter className="sm:col-span-2">
+                      ) : 'Buscar equipo por nombre, código, MAC o serie'}
+                      <ChevronsUpDown className="ml-2 size-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-2">
+                    <Input
+                      autoFocus
+                      placeholder="Buscar por nombre, código, MAC o serie"
+                      value={equipmentSearch}
+                      onChange={(event) => setEquipmentSearch(event.target.value)}
+                    />
+                    <div className="mt-2 max-h-60 overflow-y-auto">
+                      {matchingEquipment.length ? matchingEquipment.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-accent"
+                          onClick={() => {
+                            setForm({ ...form, equipmentId: String(item.id) })
+                            setEquipmentSearchOpen(false)
+                            setEquipmentSearch('')
+                          }}
+                        >
+                          <Check className={`mt-0.5 size-4 shrink-0 ${String(item.id) === String(form.equipmentId) ? 'opacity-100' : 'opacity-0'}`} />
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-medium">{item.code} · {item.name}</span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              MAC: {item.mac || '—'} · Serie: {item.serial || '—'}
+                            </span>
+                          </span>
+                        </button>
+                      )) : (
+                        <p className="px-2 py-4 text-center text-sm text-muted-foreground">No se encontraron equipos.</p>
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </Field>
+            </IncidentSection>
+            <IncidentSection icon={<ClipboardList className="size-4" />} title="Seguimiento" description="Define la prioridad, el estado y quién atenderá el caso.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Prioridad"><Choice value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={[{ value: 'alta', label: 'Alta' }, { value: 'media', label: 'Media' }, { value: 'baja', label: 'Baja' }]} /></Field>
+                <Field label="Seguimiento"><Choice value={form.status} onChange={(value) => setForm({ ...form, status: value })} options={Object.entries(INCIDENT_STATUS).map(([id, label]) => ({ value: id, label }))} /></Field>
+                {admin && <Field label="Responsable"><Choice value={form.assigneeId || 'ninguno'} onChange={(value) => setForm({ ...form, assigneeId: value === 'ninguno' ? '' : value })} options={[{ value: 'ninguno', label: 'Sin asignar' }, ...users.map((item) => ({ value: item.id, label: item.name }))]} /></Field>}
+                <Field label="Fecha de reporte"><Input type="date" value={form.reportedOn} onChange={(e) => setForm({ ...form, reportedOn: e.target.value })} /></Field>
+              </div>
+            </IncidentSection>
+            <IncidentSection icon={<Wrench className="size-4" />} title="Detalles de la incidencia" description="Describe la falla y registra la solución aplicada cuando corresponda.">
+              <Field label="Falla *"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Ej. El equipo no enciende" required /></Field>
+              <Field label="Descripción"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Añade detalles que ayuden a identificar el problema." className="min-h-20" /></Field>
+              <Field label="Solución aplicada"><Textarea value={form.solution} onChange={(e) => setForm({ ...form, solution: e.target.value })} placeholder="Describe la reparación o acción realizada." className="min-h-20" /></Field>
+            </IncidentSection>
+            <IncidentSection icon={<Camera className="size-4" />} title="Evidencia fotográfica" description="Adjunta imágenes antes y después de atender el equipo.">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Fotos del problema">
+                  <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setBefore)} />
+                  <ImagePreviews files={before} label="Foto del problema" />
+                </Field>
+                <Field label="Fotos después de la atención">
+                  <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setAfter)} />
+                  <ImagePreviews files={after} label="Foto después de la atención" />
+                </Field>
+              </div>
+            </IncidentSection>
+            <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button type="submit">Guardar incidencia</Button>
             </DialogFooter>

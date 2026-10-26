@@ -151,8 +151,8 @@ export function AppProvider({ children }) {
     return result
   }
 
-  async function updateProfile(dni) {
-    const result = await api('/api/profile', { method: 'PATCH', body: { dni } })
+  async function updateProfile(profile) {
+    const result = await api('/api/profile', { method: 'PATCH', body: profile })
     if (result.ok) setUser(result.user)
     return result
   }

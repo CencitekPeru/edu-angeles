@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Camera, Cpu, MapPin, Pencil, Trash2 } from 'lucide-react'
+import { CalendarDays, Camera, Cpu, MapPin, Pencil, Tag, Trash2 } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Badge } from '@/components/ui/badge'
@@ -60,6 +60,8 @@ export function EquipmentPage() {
   const [photos, setPhotos] = useState([])
   const [savedPhotos, setSavedPhotos] = useState([])
   const [editing, setEditing] = useState(null)
+  const [deleting, setDeleting] = useState(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const [filters, setFilters] = useState({ q: '', category: '', place: '', state: '' })
 
   async function load() {
@@ -117,11 +119,18 @@ export function EquipmentPage() {
     load()
   }
 
-  async function remove(row) {
-    const result = await api(`/api/equipment/${row.id}`, { method: 'DELETE' })
-    if (!result.ok) return toast(result.error || 'No se puede eliminar: tiene mantenimientos o incidencias.', 'bad')
-    toast('Equipo eliminado.')
-    load()
+  async function confirmDelete() {
+    if (!deleting) return
+    setDeleteLoading(true)
+    const result = await api(`/api/equipment/${deleting.id}`, { method: 'DELETE' })
+    setDeleteLoading(false)
+    if (!result.ok) {
+      toast(result.error || 'No se pudo eliminar el equipo.', 'bad')
+      return
+    }
+    toast(`Equipo "${deleting.name}" eliminado.`)
+    setDeleting(null)
+    await load()
   }
 
   return (
@@ -258,7 +267,7 @@ export function EquipmentPage() {
                   </Button>
                 )}
                 {admin && (
-                  <Button type="button" variant="ghost" size="icon" className="size-8 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => remove(row)} aria-label={`Borrar ${row.name}`} title="Borrar">
+                  <Button type="button" variant="ghost" size="icon" className="size-8 text-rose-700 hover:bg-rose-50 hover:text-rose-800" onClick={() => setDeleting(row)} aria-label={`Borrar ${row.name}`} title="Borrar">
                     <Trash2 aria-hidden="true" />
                   </Button>
                 )}
@@ -267,6 +276,27 @@ export function EquipmentPage() {
           ]}
         />
       </Panel>
+      {admin && (
+        <Dialog open={Boolean(deleting)} onOpenChange={(next) => { if (!next && !deleteLoading) setDeleting(null) }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Confirmar eliminación</DialogTitle>
+              <DialogDescription>
+                ¿Deseas eliminar el equipo <span className="font-semibold text-foreground">{deleting?.name}</span>?
+                Esta acción no se puede deshacer. No se podrá eliminar si tiene mantenimientos, incidencias u otros registros vinculados.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button type="button" variant="outline" disabled={deleteLoading} onClick={() => setDeleting(null)}>
+                Cancelar
+              </Button>
+              <Button type="button" variant="destructive" disabled={deleteLoading} onClick={confirmDelete}>
+                {deleteLoading ? 'Eliminando…' : 'Sí, eliminar'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   )
 }
@@ -310,16 +340,55 @@ export function CatalogPage() {
         <ul className="space-y-2">{places.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span><Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ambiente ${item.name}`} title={`Quitar ambiente ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/places', item, 'Ambiente')}><Trash2 className="size-4" /></Button></li>)}</ul>
       </Panel>
       <Dialog open={Boolean(kind)} onOpenChange={(next) => { if (!next) setKind('') }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{kind === 'categoria' ? 'Nueva categoría' : 'Nuevo ambiente'}</DialogTitle>
-            <DialogDescription>El nombre queda disponible en los formularios de inventario.</DialogDescription>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary">
+                {kind === 'categoria' ? <Tag className="size-5" /> : <MapPin className="size-5" />}
+              </div>
+              <div>
+                <DialogTitle>{kind === 'categoria' ? 'Nueva categoría' : 'Nuevo ambiente'}</DialogTitle>
+                <DialogDescription className="mt-1">
+                  {kind === 'categoria'
+                    ? 'Organiza los equipos con una categoría fácil de reconocer.'
+                    : 'Registra un espacio para ubicar los equipos del inventario.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
-          <form onSubmit={(event) => { event.preventDefault(); add(kind === 'categoria' ? '/api/categories' : '/api/places', kind === 'categoria' ? category : place, kind === 'categoria' ? setCategory : setPlace) }}>
-            <Field label="Nombre">
-              <Input value={kind === 'categoria' ? category : place} onChange={(event) => (kind === 'categoria' ? setCategory : setPlace)(event.target.value)} required />
-            </Field>
-            <DialogFooter className="mt-4">
+          <form
+            className="grid gap-4"
+            onSubmit={(event) => {
+              event.preventDefault()
+              add(
+                kind === 'categoria' ? '/api/categories' : '/api/places',
+                kind === 'categoria' ? category : place,
+                kind === 'categoria' ? setCategory : setPlace,
+              )
+            }}
+          >
+            <section className="overflow-hidden rounded-lg border border-border/70">
+              <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                {kind === 'categoria' ? <Tag className="mt-0.5 size-4 text-primary" /> : <MapPin className="mt-0.5 size-4 text-primary" />}
+                <div>
+                  <h3 className="text-sm font-semibold">Datos del catálogo</h3>
+                  <p className="text-xs text-muted-foreground">Este nombre aparecerá como opción en el inventario.</p>
+                </div>
+              </div>
+              <div className="p-3">
+                <Field label={kind === 'categoria' ? 'Nombre de la categoría' : 'Nombre del ambiente'}>
+                  <Input
+                    autoFocus
+                    value={kind === 'categoria' ? category : place}
+                    onChange={(event) => (kind === 'categoria' ? setCategory : setPlace)(event.target.value)}
+                    placeholder={kind === 'categoria' ? 'Ej. Computadoras' : 'Ej. Aula 1'}
+                    maxLength={120}
+                    required
+                  />
+                </Field>
+              </div>
+            </section>
+            <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => setKind('')}>Cancelar</Button>
               <Button type="submit">Guardar</Button>
             </DialogFooter>

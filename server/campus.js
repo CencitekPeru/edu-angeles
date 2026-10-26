@@ -242,9 +242,49 @@ export function campusRouter() {
   }))
 
   router.delete('/api/equipment/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
-    await getPool().query('DELETE FROM equipment_photos WHERE equipment_id = ?', [req.params.id])
-    await getPool().query('DELETE FROM equipment WHERE id = ?', [req.params.id])
-    res.json({ ok: true })
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [equipment] = await connection.query(
+        'SELECT id, name FROM equipment WHERE id = ? FOR UPDATE',
+        [req.params.id],
+      )
+      if (!equipment.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'El equipo ya no existe.' })
+      }
+      const [references] = await connection.query(
+        `SELECT
+           (SELECT COUNT(*) FROM maintenance WHERE equipment_id = ?) AS maintenance,
+           (SELECT COUNT(*) FROM incidents WHERE equipment_id = ?) AS incidents,
+           (SELECT COUNT(*) FROM parts WHERE equipment_id = ?) AS parts,
+           (SELECT COUNT(*) FROM documents WHERE equipment_id = ?) AS documents`,
+        [req.params.id, req.params.id, req.params.id, req.params.id],
+      )
+      const linked = [
+        ['mantenimiento', Number(references[0].maintenance)],
+        ['incidencia', Number(references[0].incidents)],
+        ['repuesto', Number(references[0].parts)],
+        ['documento', Number(references[0].documents)],
+      ].filter(([, count]) => count > 0)
+      if (linked.length) {
+        await connection.rollback()
+        const details = linked.map(([label, count]) => `${count} ${label}${count === 1 ? '' : 's'}`).join(', ')
+        return res.status(409).json({
+          ok: false,
+          error: `No se puede eliminar "${equipment[0].name}" porque conserva registros vinculados: ${details}. Elimina o reasigna esos registros antes de continuar.`,
+        })
+      }
+      await connection.query('DELETE FROM equipment_photos WHERE equipment_id = ?', [req.params.id])
+      await connection.query('DELETE FROM equipment WHERE id = ?', [req.params.id])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }))
 
   router.post('/api/equipment/:id/photos', requireAuth, requireAdmin, upload.array('photos', 6), wrap(async (req, res) => {
@@ -282,9 +322,28 @@ export function campusRouter() {
   }))
 
   router.delete('/api/maintenance/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
-    await getPool().query('DELETE FROM maintenance_photos WHERE maintenance_id = ?', [req.params.id])
-    await getPool().query('DELETE FROM maintenance WHERE id = ?', [req.params.id])
-    res.json({ ok: true })
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [records] = await connection.query(
+        'SELECT id, code FROM maintenance WHERE id = ? FOR UPDATE',
+        [req.params.id],
+      )
+      if (!records.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'El mantenimiento ya no existe.' })
+      }
+      await connection.query('UPDATE parts SET maintenance_id = NULL WHERE maintenance_id = ?', [req.params.id])
+      await connection.query('DELETE FROM maintenance_photos WHERE maintenance_id = ?', [req.params.id])
+      await connection.query('DELETE FROM maintenance WHERE id = ?', [req.params.id])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }))
 
   router.post('/api/maintenance/:id/photos', requireAuth, requireAdmin, upload.array('photos', 6), wrap(async (req, res) => {
