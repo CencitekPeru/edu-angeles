@@ -372,7 +372,7 @@ export default function NewRequest({
                         start: form.startTime,
                         end: form.endTime,
                         label: 'Tu solicitud',
-                        tone: check.conflicts.length || toMinutes(form.endTime) <= toMinutes(form.startTime) ? 'bad' : 'ok',
+                        tone: check.conflicts.length || fixed.length || toMinutes(form.endTime) <= toMinutes(form.startTime) ? 'bad' : 'ok',
                       }
                     : null
                 }

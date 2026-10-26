@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { config } from './config.js'
 import { getPool, mapUser } from './db.js'
-import { GRADES, SECTIONS } from '../src/lib/reservations.js'
+import { COMPUTER_ROOMS, GRADES, SECTIONS } from '../src/lib/reservations.js'
 
 const uploadDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')
 fs.mkdirSync(uploadDir, { recursive: true })
@@ -32,7 +32,10 @@ export function campusRouter() {
   router.use('/api/uploads', express.static(uploadDir))
 
   router.get('/api/rooms', requireAuth, wrap(async (_req, res) => {
-    const [rows] = await getPool().query('SELECT id, name FROM rooms ORDER BY id')
+    const [rows] = await getPool().query(
+      'SELECT id, name FROM rooms WHERE name IN (?, ?) ORDER BY id',
+      COMPUTER_ROOMS,
+    )
     res.json({ ok: true, rooms: rows })
   }))
 
@@ -628,14 +631,28 @@ export async function ensureCampus() {
     await db.query('ALTER TABLE requests ADD CONSTRAINT fk_requests_room FOREIGN KEY (room_id) REFERENCES rooms(id)')
   }
 
-  const [roomCount] = await db.query('SELECT COUNT(*) AS total FROM rooms')
-  if (!roomCount[0].total) {
-    for (const name of ['Sala de cómputo', 'Aula de Innovación', 'Aula 1', 'Aula 2', 'Sala de Redes']) {
-      await db.query('INSERT INTO rooms (name) VALUES (?)', [name])
+  for (const [index, name] of COMPUTER_ROOMS.entries()) {
+    const [existing] = await db.query('SELECT id FROM rooms WHERE name = ?', [name])
+    if (existing.length) continue
+    if (index === 0) {
+      const [legacyLab] = await db.query("SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1")
+      if (legacyLab.length) {
+        await db.query('UPDATE rooms SET name = ? WHERE id = ?', [name, legacyLab[0].id])
+        continue
+      }
     }
+    await db.query('INSERT INTO rooms (name) VALUES (?)', [name])
   }
-  const [lab] = await db.query(`SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1`)
-  if (lab[0]) await db.query('UPDATE requests SET room_id = ? WHERE room_id IS NULL', [lab[0].id])
+  const [lab] = await db.query('SELECT id FROM rooms WHERE name = ? LIMIT 1', [COMPUTER_ROOMS[0]])
+  if (lab[0]) {
+    const [legacyLab] = await db.query("SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1")
+    if (legacyLab[0]) {
+      await db.query('UPDATE requests SET room_id = ? WHERE room_id = ?', [lab[0].id, legacyLab[0].id])
+      await db.query('UPDATE fixed_schedules SET room_id = ? WHERE room_id = ?', [lab[0].id, legacyLab[0].id])
+      await db.query('DELETE FROM rooms WHERE id = ?', [legacyLab[0].id])
+    }
+    await db.query('UPDATE requests SET room_id = ? WHERE room_id IS NULL', [lab[0].id])
+  }
 
   const [categories] = await db.query('SELECT COUNT(*) AS total FROM categories')
   if (!categories[0].total) {

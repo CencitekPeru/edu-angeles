@@ -127,6 +127,7 @@ export default function AdminRequests() {
               start: item.startTime,
               end: item.endTime,
               ignoreId: item.id,
+              roomId: item.roomId,
             })
             const finished = isPastEnd(item.date, item.endTime)
             return (

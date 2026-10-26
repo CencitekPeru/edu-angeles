@@ -18,6 +18,7 @@ const PX = 0.84
 const OPEN = toMinutes(LAB.open)
 const CLOSE = toMinutes(LAB.close)
 const HEIGHT = (CLOSE - OPEN) * PX
+const isVisibleSchedule = (status) => status === 'fixed' || isBlocking(status)
 
 function place(items) {
   const sorted = [...items].sort(
@@ -141,7 +142,7 @@ function Blocks({ items, users, preview, showNow = false }) {
 }
 
 export function DayTimeline({ date, requests, users, preview }) {
-  const items = requests.filter((item) => item.date === date && isBlocking(item.status))
+  const items = requests.filter((item) => item.date === date && isVisibleSchedule(item.status))
   const showNow = date === todayISO()
   return (
     <Card className="border-border/80">
@@ -273,7 +274,7 @@ function CompactDays({ days, dayIndex, setDayIndex, requests, users, canReserve,
 }
 
 function DayColumn({ date, requests, users, canReserve, onReserve }) {
-  const items = requests.filter((item) => item.date === date && isBlocking(item.status))
+  const items = requests.filter((item) => item.date === date && isVisibleSchedule(item.status))
   const parts = dayParts(date)
   const today = date === todayISO()
   const bookable = canReserve && date >= todayISO()

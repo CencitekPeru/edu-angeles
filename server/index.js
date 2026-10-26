@@ -4,7 +4,7 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
+import { COMPUTER_ROOMS, GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
 import { config } from './config.js'
 import { campusRouter, ensureCampus } from './campus.js'
@@ -440,6 +440,9 @@ app.use((req, res, next) => {
 
 app.use((error, _req, res, _next) => {
   console.error(error)
+  if (error?.status === 400) {
+    return res.status(400).json({ ok: false, error: error.message })
+  }
   const connectionError = [
     'ECONNREFUSED',
     'ETIMEDOUT',
@@ -524,16 +527,15 @@ async function findRequest(id) {
 async function resolveRoomId(value) {
   const id = Number(value)
   if (id) {
-    const [rows] = await pool.query('SELECT id FROM rooms WHERE id = ?', [id])
+    const [rows] = await pool.query(
+      'SELECT id FROM rooms WHERE id = ? AND name IN (?, ?)',
+      [id, ...COMPUTER_ROOMS],
+    )
     if (rows[0]) return rows[0].id
   }
-  const [fallback] = await pool.query(`SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1`)
-  if (!fallback[0]) {
-    const error = new Error('No hay salas registradas.')
-    error.status = 400
-    throw error
-  }
-  return fallback[0].id
+  const error = new Error('Selecciona una de las aulas de cómputo disponibles.')
+  error.status = 400
+  throw error
 }
 
 async function fixedHits(connection, { date, startTime, endTime, roomId }) {

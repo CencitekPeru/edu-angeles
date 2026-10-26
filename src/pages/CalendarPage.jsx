@@ -103,9 +103,11 @@ export default function CalendarPage() {
     .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
     .slice(0, 3), [requests])
 
-  const merged = useMemo(() => {
-    const roomRequests = requests.filter((item) => !selected || Number(item.roomId) === Number(selected) || !item.roomId)
-    const slots = fixedSchedules.filter((item) => Number(item.roomId) === Number(selected))
+  const roomCalendars = useMemo(() => rooms.map((room) => {
+    const roomRequests = requests.filter(
+      (item) => !item.roomId || Number(item.roomId) === Number(room.id),
+    )
+    const slots = fixedSchedules.filter((item) => Number(item.roomId) === Number(room.id))
     const fixed = []
     const anchor = new Date()
     for (let offset = -21; offset <= 70; offset += 7) {
@@ -131,8 +133,8 @@ export default function CalendarPage() {
         }
       }
     }
-    return [...roomRequests, ...fixed]
-  }, [requests, fixedSchedules, selected])
+    return { room, requests: [...roomRequests, ...fixed] }
+  }), [rooms, requests, fixedSchedules])
 
   const upcoming = useMemo(() => requests
     .filter((item) =>
@@ -196,8 +198,18 @@ export default function CalendarPage() {
 
       {admin ? (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,0.9fr)]">
-          <div className="space-y-3">
-            <WeekBoard requests={merged} users={users} initialDate={calendarDate} onReserve={setCalendarDate} />
+          <div className="space-y-4">
+            {roomCalendars.map(({ room, requests: roomRequests }) => (
+              <section key={room.id} className={`space-y-2 rounded-xl ${Number(selected) === Number(room.id) ? 'ring-1 ring-primary/40' : ''}`}>
+                <h2 className="px-1 text-sm font-bold text-foreground">{room.name}</h2>
+                <WeekBoard
+                  requests={roomRequests}
+                  users={users}
+                  initialDate={calendarDate}
+                  onReserve={setCalendarDate}
+                />
+              </section>
+            ))}
             <CalendarLegend />
           </div>
           <aside className="space-y-4">
@@ -268,13 +280,23 @@ export default function CalendarPage() {
       ) : (
         <>
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <WeekBoard
-              requests={merged}
-              users={users}
-              canReserve={teacher}
-              initialDate={calendarDate}
-              onReserve={setCalendarDate}
-            />
+            <div className="space-y-4">
+              {roomCalendars.map(({ room, requests: roomRequests }) => (
+                <section key={room.id} className={`space-y-2 rounded-xl ${Number(selected) === Number(room.id) ? 'ring-1 ring-primary/40' : ''}`}>
+                  <h2 className="px-1 text-sm font-bold text-foreground">{room.name}</h2>
+                  <WeekBoard
+                    requests={roomRequests}
+                    users={users}
+                    canReserve={teacher}
+                    initialDate={calendarDate}
+                    onReserve={(date) => {
+                      setCalendarDate(date)
+                      if (teacher) setRoomId(String(room.id))
+                    }}
+                  />
+                </section>
+              ))}
+            </div>
             {teacher && (
               <NewRequest
                 inline

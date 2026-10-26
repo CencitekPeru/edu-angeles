@@ -25,6 +25,7 @@ export default function TeacherHome() {
     start: item.startTime,
     end: item.endTime,
     ignoreId: item.id,
+    roomId: item.roomId,
   }).length > 0)
   const today = todayISO()
   const todayItems = requests.filter((item) => item.date === today && isBlocking(item.status))

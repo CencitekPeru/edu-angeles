@@ -12,6 +12,7 @@ import {
 
 export const GRADES = ['1°', '2°', '3°', '4°', '5°', '6°']
 export const SECTIONS = ['A', 'B', 'C', 'Única']
+export const COMPUTER_ROOMS = ['Aula de cómputo 1', 'Aula de cómputo 2']
 
 export const STATUS = {
   pending: 'Pendiente',

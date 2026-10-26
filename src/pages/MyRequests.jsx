@@ -99,6 +99,7 @@ export default function MyRequests() {
                 start: item.startTime,
                 end: item.endTime,
                 ignoreId: item.id,
+                roomId: item.roomId,
               }).length > 0
             const canCancel =
               (item.status === 'pending' || item.status === 'approved') &&
