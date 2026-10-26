@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, Laptop, LogIn, Sparkles } from 'lucide-react'
-import campusBackground from '../assets/login-campus.jpg'
+import { AlertCircle, LogIn, Sparkles } from 'lucide-react'
+import campusBackground from '../assets/login-fondo.webp'
+import schoolLogo from '../assets/logo-colegio.jpg'
 import { useApp } from '../context/AppContext'
 import { SCHOOL } from '../lib/school'
 import { Button } from '@/components/ui/button'
@@ -56,8 +57,8 @@ export default function Login() {
 
         {/* Brand header */}
         <div className="relative flex items-center gap-3.5 z-10">
-          <div className="flex size-12 items-center justify-center rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 text-2xl shadow-inner">
-            🎓
+          <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/20 bg-white shadow-inner">
+            <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full object-contain" />
           </div>
           <div>
             <h1 className="text-xl font-black uppercase tracking-wider">{SCHOOL.name}</h1>
@@ -81,13 +82,6 @@ export default function Login() {
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center justify-between text-xs text-slate-400 border-t border-white/10 pt-4">
-          <div className="flex items-center gap-2">
-            <Laptop className="size-4 text-emerald-400" aria-hidden="true" />
-            <span>CIST · {SCHOOL.name}</span>
-          </div>
-          <span>{SCHOOL.place}</span>
-        </div>
       </section>
 
       {/* Login Form Panel (Right) */}
@@ -99,8 +93,8 @@ export default function Login() {
         <div className="mx-auto w-full max-w-sm">
           {/* Mobile school logo */}
           <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <div className="flex size-10 items-center justify-center rounded-xl bg-slate-900 text-white text-lg">
-              🎓
+            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
+              <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full object-contain" />
             </div>
             <div>
               <p className="text-sm font-black uppercase text-foreground">{SCHOOL.name}</p>

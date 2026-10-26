@@ -286,7 +286,7 @@ export default function MaterialsPage() {
             </div>
             <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => closeDialog(false)}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Button>
+              <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
