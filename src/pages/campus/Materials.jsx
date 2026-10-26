@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Boxes, ClipboardList, MapPin, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Badge } from '@/components/ui/badge'
@@ -172,7 +172,18 @@ export default function MaterialsPage() {
             { key: 'category', label: 'Categoría' },
             { key: 'quantity', label: 'Existencias', render: (item) => <span className="font-semibold">{item.quantity} {item.unit}</span> },
             { key: 'place', label: 'Ubicación', render: (item) => item.place || <span className="text-muted-foreground">Sin asignar</span> },
-            { key: 'state', label: 'Estado', render: (item) => <Badge variant={stateVariants[item.state] || 'secondary'}>{item.state}</Badge> },
+            { key: 'state', label: 'Estado', render: (item) => (
+              <Badge
+                variant={stateVariants[item.state] || 'secondary'}
+                className={{
+                  Bueno: 'border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600 dark:text-white',
+                  Regular: 'border-amber-700 bg-amber-600 text-white dark:border-amber-500 dark:bg-amber-600 dark:text-white',
+                  Malo: 'border-rose-700 bg-rose-600 text-white dark:border-rose-500 dark:bg-rose-600 dark:text-white',
+                }[item.state] || 'border-slate-700 bg-slate-600 text-white dark:border-slate-500 dark:bg-slate-600 dark:text-white'}
+              >
+                {item.state}
+              </Badge>
+            ) },
             { key: 'actions', label: 'Acciones', render: (item) => (
               <span className="flex gap-1">
                 <Button type="button" variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} title="Editar" onClick={() => openEdit(item)}>
@@ -188,36 +199,92 @@ export default function MaterialsPage() {
       </Panel>
 
       <Dialog open={dialogOpen} onOpenChange={closeDialog}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{editingId ? 'Editar material' : 'Agregar material'}</DialogTitle>
-            <DialogDescription>Registra la cantidad disponible, su estado y dónde se encuentra.</DialogDescription>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary"><Package className="size-5" /></div>
+              <div>
+                <DialogTitle>{editingId ? 'Editar material' : 'Agregar material'}</DialogTitle>
+                <DialogDescription className="mt-1">
+                  {editingId
+                    ? 'Actualiza la información y existencias de este material.'
+                    : 'Completa los datos para registrar un material en el inventario.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
           <form onSubmit={save} className="grid gap-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="Nombre del material *">
-                <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Sillas" maxLength={160} required />
-              </Field>
-              <Field label="Categoría *">
-                <Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="Ej. Mobiliario escolar" maxLength={100} required />
-              </Field>
-              <Field label="Cantidad *">
-                <Input type="number" min="0" step="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required />
-              </Field>
-              <Field label="Unidad *">
-                <Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} placeholder="unidad, paquete, caja…" maxLength={40} required />
-              </Field>
-              <Field label="Ubicación">
-                <Input value={form.place} onChange={(event) => setForm({ ...form, place: event.target.value })} placeholder="Ej. Aula 1" maxLength={120} />
-              </Field>
-              <Field label="Estado">
-                <Choice value={form.state} onChange={(value) => setForm({ ...form, state: value })} options={['Bueno', 'Regular', 'Malo'].map((value) => ({ value, label: value }))} />
-              </Field>
-              <Field label="Observaciones" className="sm:col-span-2">
-                <Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Detalles útiles sobre el material…" />
-              </Field>
+            <div className="grid gap-4 lg:grid-cols-2">
+              <section className="overflow-hidden rounded-lg border border-border/70">
+                <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                  <Package className="mt-0.5 size-4 text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold">1. Identificación del material</h3>
+                    <p className="text-xs text-muted-foreground">Indica qué material estás registrando.</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 p-3">
+                  <Field label="Nombre del material *">
+                    <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Sillas" maxLength={160} required />
+                  </Field>
+                  <Field label="Categoría *">
+                    <Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="Ej. Mobiliario escolar" maxLength={100} required />
+                  </Field>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-border/70">
+                <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                  <Boxes className="mt-0.5 size-4 text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold">2. Existencias y estado</h3>
+                    <p className="text-xs text-muted-foreground">Registra cuánto hay disponible y su condición.</p>
+                  </div>
+                </div>
+                <div className="grid gap-3 p-3 sm:grid-cols-2">
+                  <Field label="Cantidad *">
+                    <Input type="number" min="0" step="1" value={form.quantity} onChange={(event) => setForm({ ...form, quantity: event.target.value })} required />
+                  </Field>
+                  <Field label="Unidad *">
+                    <Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} placeholder="unidad, paquete, caja…" maxLength={40} required />
+                  </Field>
+                  <Field label="Estado" className="sm:col-span-2">
+                    <Choice value={form.state} onChange={(value) => setForm({ ...form, state: value })} options={['Bueno', 'Regular', 'Malo'].map((value) => ({ value, label: value }))} />
+                  </Field>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-border/70">
+                <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                  <MapPin className="mt-0.5 size-4 text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold">3. Ubicación</h3>
+                    <p className="text-xs text-muted-foreground">Puedes dejarla vacía si aún no está asignado.</p>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <Field label="Ambiente o lugar">
+                    <Input value={form.place} onChange={(event) => setForm({ ...form, place: event.target.value })} placeholder="Ej. Aula 1" maxLength={120} />
+                  </Field>
+                </div>
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-border/70">
+                <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
+                  <ClipboardList className="mt-0.5 size-4 text-primary" />
+                  <div>
+                    <h3 className="text-sm font-semibold">4. Información adicional</h3>
+                    <p className="text-xs text-muted-foreground">Añade detalles que ayuden a identificarlo o controlarlo.</p>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <Field label="Observaciones">
+                    <Textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="Detalles útiles sobre el material…" className="min-h-24" />
+                  </Field>
+                </div>
+              </section>
             </div>
-            <DialogFooter>
+            <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => closeDialog(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Agregar al inventario'}</Button>
             </DialogFooter>

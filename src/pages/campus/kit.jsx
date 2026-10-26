@@ -69,9 +69,9 @@ export function Pill({ value, className, solid = false }) {
   )
 }
 
-export function Filters({ children }) {
+export function Filters({ children, className = '' }) {
   return (
-    <div className="mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={`mb-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 ${className}`}>
       {children}
     </div>
   )

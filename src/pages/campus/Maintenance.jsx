@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Pencil } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
@@ -100,7 +101,7 @@ export function MaintenancePage({ mode = 'form' }) {
         </Dialog>
       )}
       <Panel title={mode === 'plan' ? 'Cronograma de actividades' : 'Listado de mantenimientos'}>
-        <Filters>
+        <Filters className="lg:grid-cols-5">
           <Input placeholder="Buscar por equipo, código o actividad" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
           <Choice value={filters.category || 'todas'} onChange={(value) => setFilters({ ...filters, category: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las categorías' }, ...categories.map((item) => ({ value: item.name, label: item.name }))]} />
           <Choice value={filters.status || 'todos'} onChange={(value) => setFilters({ ...filters, status: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los estados' }, ...['Programado', 'Pendiente', 'En proceso', 'Realizado'].map((item) => ({ value: item, label: item }))]} />
@@ -119,7 +120,10 @@ export function MaintenancePage({ mode = 'form' }) {
             { key: 'responsible', label: 'Responsable' },
             { key: 'next', label: 'Próximo', render: (row) => row.nextDate || '—' },
             { key: 'actions', label: 'Acciones', render: (row) => user.role === 'admin' ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => editRow(row)}>Editar</Button>
+              <Button type="button" size="sm" className="gap-1.5 bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => editRow(row)}>
+                <Pencil className="size-3.5" aria-hidden="true" />
+                Editar
+              </Button>
             ) : '—' },
           ]}
         />

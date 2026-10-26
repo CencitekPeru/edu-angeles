@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Check, ChevronsUpDown } from 'lucide-react'
+import { Check, ChevronsUpDown, Eye } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { INCIDENT_STATUS } from '../../lib/school'
 import { useApp } from '../../context/AppContext'
@@ -17,6 +17,29 @@ const empty = {
   reportedOn: new Date().toISOString().slice(0, 10),
 }
 
+function ImagePreviews({ files, label }) {
+  const [previews, setPreviews] = useState([])
+
+  useEffect(() => {
+    const next = files.map((file) => ({ file, url: URL.createObjectURL(file) }))
+    setPreviews(next)
+    return () => next.forEach((preview) => URL.revokeObjectURL(preview.url))
+  }, [files])
+
+  if (!previews.length) return null
+
+  return (
+    <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+      {previews.map(({ file, url }) => (
+        <figure key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-md border border-border/70">
+          <img src={url} alt={`${label}: ${file.name}`} className="h-20 w-full object-cover" />
+          <figcaption className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{file.name}</figcaption>
+        </figure>
+      ))}
+    </div>
+  )
+}
+
 export function IncidentsPage() {
   const { user, toast } = useApp()
   const admin = user.role === 'admin'
@@ -30,6 +53,8 @@ export function IncidentsPage() {
   const [open, setOpen] = useState(false)
   const [equipmentSearchOpen, setEquipmentSearchOpen] = useState(false)
   const [equipmentSearch, setEquipmentSearch] = useState('')
+  const [viewing, setViewing] = useState(null)
+  const [loadingView, setLoadingView] = useState(false)
   const [filters, setFilters] = useState({ q: '', status: '', priority: '' })
   const selectedEquipment = equipment.find((item) => String(item.id) === String(form.equipmentId))
   const matchingEquipment = equipment.filter((item) =>
@@ -55,9 +80,15 @@ export function IncidentsPage() {
       : await api('/api/incidents', { method: 'POST', body: payload })
     if (!result.ok) return toast(result.error || 'No se pudo guardar la incidencia.', 'bad')
     const id = result.id || editing
-    if (before.length && id) await upload(`/api/incidents/${id}/photos`, before, { kind: 'before' })
-    if (after.length && id) await upload(`/api/incidents/${id}/photos`, after, { kind: 'after' })
-    toast(editing ? 'Incidencia actualizada.' : `Incidencia ${result.code} vinculada al equipo.`)
+    const photoResults = await Promise.all([
+      ...(before.length && id ? [upload(`/api/incidents/${id}/photos`, before, { kind: 'before' })] : []),
+      ...(after.length && id ? [upload(`/api/incidents/${id}/photos`, after, { kind: 'after' })] : []),
+    ])
+    const photoError = photoResults.find((item) => !item.ok)
+    if (photoError) {
+      toast(`La incidencia se guardó, pero hubo un problema al subir las fotos. ${photoError.error || ''}`.trim(), 'bad')
+    }
+    else toast(editing ? 'Incidencia actualizada.' : `Incidencia ${result.code} vinculada al equipo.`)
     setForm(empty)
     setEditing(null)
     setBefore([])
@@ -66,12 +97,30 @@ export function IncidentsPage() {
     load()
   }
 
+  async function viewIncident(row) {
+    setLoadingView(true)
+    const result = await api(`/api/incidents/${row.id}`)
+    setLoadingView(false)
+    if (!result.ok) return toast(result.error || 'No se pudo cargar el detalle de la incidencia.', 'bad')
+    setViewing(result)
+  }
+
+  function fileList(files, setter) {
+    setter(Array.from(files || []).filter((file) => file.type.startsWith('image/')))
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Button type="button" onClick={() => { setForm(empty); setEditing(null); setOpen(true) }}>Registrar incidencia</Button>
+        <Button type="button" onClick={() => { setForm(empty); setEditing(null); setBefore([]); setAfter([]); setOpen(true) }}>Registrar incidencia</Button>
       </div>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          setBefore([])
+          setAfter([])
+        }
+      }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editing ? 'Actualizar incidencia' : 'Registrar incidencia'}</DialogTitle>
@@ -134,8 +183,14 @@ export function IncidentsPage() {
             <Field label="Falla *" className="sm:col-span-2"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></Field>
             <Field label="Descripción" className="sm:col-span-2"><Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
             <Field label="Solución aplicada" className="sm:col-span-2"><Textarea value={form.solution} onChange={(e) => setForm({ ...form, solution: e.target.value })} /></Field>
-            <Field label="Fotos del problema"><Input type="file" accept="image/*" multiple onChange={(e) => setBefore([...e.target.files])} /></Field>
-            <Field label="Fotos después de la atención"><Input type="file" accept="image/*" multiple onChange={(e) => setAfter([...e.target.files])} /></Field>
+            <Field label="Fotos del problema">
+              <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setBefore)} />
+              <ImagePreviews files={before} label="Foto del problema" />
+            </Field>
+            <Field label="Fotos después de la atención">
+              <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setAfter)} />
+              <ImagePreviews files={after} label="Foto después de la atención" />
+            </Field>
             <DialogFooter className="sm:col-span-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
               <Button type="submit">Guardar incidencia</Button>
@@ -160,10 +215,65 @@ export function IncidentsPage() {
           { key: 'status', label: 'Estado', render: (row) => <Pill value={row.status} solid /> },
           { key: 'assignee', label: 'Responsable' },
           { key: 'solution', label: 'Solución', render: (row) => row.solution || '—' },
-          { key: 'actions', label: '', render: (row) => admin ? <Button type="button" size="sm" className="bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => { setEditing(row.id); setForm({ ...empty, ...row, assigneeId: row.assigneeId || '' }); setOpen(true) }}>Atender</Button> : null },
+          { key: 'actions', label: 'Acciones', render: (row) => (
+            <div className="flex items-center gap-1.5">
+              <Button type="button" variant="outline" size="icon" aria-label="Ver incidencia" title="Ver incidencia" disabled={loadingView} onClick={() => viewIncident(row)}>
+                <Eye className="size-4" />
+              </Button>
+              {admin && (
+                <Button type="button" size="sm" className="bg-sky-600 text-white shadow-sm hover:bg-sky-700" onClick={() => { setEditing(row.id); setForm({ ...empty, ...row, assigneeId: row.assigneeId || '' }); setBefore([]); setAfter([]); setOpen(true) }}>
+                  Atender
+                </Button>
+              )}
+            </div>
+          ) },
         ]} />
       </Panel>
+      <Dialog open={Boolean(viewing)} onOpenChange={(next) => { if (!next) setViewing(null) }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{viewing?.incident.code} · {viewing?.incident.title}</DialogTitle>
+            <DialogDescription>
+              {viewing && `${viewing.incident.equipmentCode} · ${viewing.incident.equipmentName} · ${viewing.incident.reportedOn}`}
+            </DialogDescription>
+          </DialogHeader>
+          {viewing && (
+            <div className="space-y-4">
+              <div className="grid gap-3 rounded-lg border border-border/70 bg-muted/20 p-3 sm:grid-cols-2">
+                <p className="text-sm"><span className="font-semibold">MAC:</span> {viewing.incident.equipmentMac || '—'}</p>
+                <p className="text-sm"><span className="font-semibold">Serie:</span> {viewing.incident.equipmentSerial || '—'}</p>
+                <p className="text-sm"><span className="font-semibold">Prioridad:</span> <Pill value={viewing.incident.priority} solid /></p>
+                <p className="text-sm"><span className="font-semibold">Estado:</span> <Pill value={viewing.incident.status} solid /></p>
+                <p className="text-sm sm:col-span-2"><span className="font-semibold">Responsable:</span> {viewing.incident.assignee || 'Sin asignar'}</p>
+                <p className="text-sm sm:col-span-2"><span className="font-semibold">Descripción:</span> {viewing.incident.description || 'Sin descripción.'}</p>
+                <p className="text-sm sm:col-span-2"><span className="font-semibold">Solución:</span> {viewing.incident.solution || 'Sin solución registrada.'}</p>
+              </div>
+              <PhotoGallery title="Fotos del problema" photos={viewing.photos.before} />
+              <PhotoGallery title="Fotos después de la atención" photos={viewing.photos.after} />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
+  )
+}
+
+function PhotoGallery({ title, photos }) {
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-semibold">{title}</h3>
+      {photos.length ? (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {photos.map((photo) => (
+            <a key={photo.id} href={photo.path} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border border-border/70">
+              <img src={photo.path} alt={title} className="h-36 w-full object-cover transition-transform hover:scale-105" />
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No hay fotos cargadas.</p>
+      )}
+    </section>
   )
 }
 

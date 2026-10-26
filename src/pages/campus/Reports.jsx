@@ -139,27 +139,45 @@ export function FixedHoursPage() {
           {user.role === 'admin' && <Button type="button" onClick={() => setOpenHour(true)}>Agregar horario</Button>}
         </div>
         <Dialog open={openHour} onOpenChange={setOpenHour}>
-          <DialogContent>
-            <DialogHeader>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader className="border-b border-border/70 pb-4">
               <DialogTitle>Horario fijo semanal</DialogTitle>
-              <DialogDescription>El bloque se repetirá el día elegido y bloqueará la sala.</DialogDescription>
+              <DialogDescription>Organiza el horario del docente. Este bloque se repetirá cada semana y bloqueará la sala.</DialogDescription>
             </DialogHeader>
-            <form onSubmit={save} className="grid gap-3">
-              <Field label="Docente"><Choice value={form.teacherId} onChange={(value) => setForm({ ...form, teacherId: value })} options={users.filter((item) => item.role === 'teacher').map((item) => ({ value: item.id, label: item.name }))} /></Field>
-              <Field label="Sala"><Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={rooms.map((item) => ({ value: item.id, label: item.name }))} /></Field>
-              <Field label="Día"><Choice value={form.weekday} onChange={(value) => setForm({ ...form, weekday: value })} options={WEEKDAYS.map((day) => ({ value: day.id, label: day.label }))} /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Inicio"><Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} /></Field>
-                <Field label="Fin"><Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} /></Field>
+            <form onSubmit={save} className="grid gap-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Docente">
+                  <Choice value={form.teacherId} onChange={(value) => setForm({ ...form, teacherId: value })} options={users.filter((item) => item.role === 'teacher').map((item) => ({ value: item.id, label: item.name }))} />
+                </Field>
+                <Field label="Sala">
+                  <Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={rooms.map((item) => ({ value: item.id, label: item.name }))} />
+                </Field>
+                <Field label="Día de la semana">
+                  <Choice value={form.weekday} onChange={(value) => setForm({ ...form, weekday: value })} options={WEEKDAYS.map((day) => ({ value: day.id, label: day.label }))} />
+                </Field>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Hora de inicio">
+                    <Input type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+                  </Field>
+                  <Field label="Hora de fin">
+                    <Input type="time" value={form.endTime} onChange={(e) => setForm({ ...form, endTime: e.target.value })} />
+                  </Field>
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Grado"><Choice value={form.grade} onChange={(value) => setForm({ ...form, grade: value })} options={GRADES.map((grade) => ({ value: grade, label: grade }))} /></Field>
-                <Field label="Sección"><Choice value={form.section} onChange={(value) => setForm({ ...form, section: value })} options={SECTIONS.map((section) => ({ value: section, label: section }))} /></Field>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Grado">
+                  <Choice value={form.grade} onChange={(value) => setForm({ ...form, grade: value })} options={GRADES.map((grade) => ({ value: grade, label: grade }))} />
+                </Field>
+                <Field label="Sección">
+                  <Choice value={form.section} onChange={(value) => setForm({ ...form, section: value })} options={SECTIONS.map((section) => ({ value: section, label: section }))} />
+                </Field>
               </div>
-              <Field label="Finalidad"><Input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} /></Field>
-              <DialogFooter>
+              <Field label="Finalidad del horario">
+                <Input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} />
+              </Field>
+              <DialogFooter className="border-t border-border/70 pt-4">
                 <Button type="button" variant="outline" onClick={() => setOpenHour(false)}>Cancelar</Button>
-                <Button type="submit">Guardar</Button>
+                <Button type="submit">Guardar horario</Button>
               </DialogFooter>
             </form>
           </DialogContent>

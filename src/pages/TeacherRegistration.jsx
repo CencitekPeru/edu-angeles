@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { UserPlus } from 'lucide-react'
+import { Pencil, UserPlus } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -12,8 +12,9 @@ import { Panel, Table } from './campus/kit'
 const emptyForm = { name: '', email: '', dni: '', subject: '' }
 
 export default function TeacherRegistration() {
-  const { users, requests, addTeacher, toast } = useApp()
+  const { users, requests, addTeacher, updateTeacher, toast } = useApp()
   const [form, setForm] = useState(emptyForm)
+  const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [open, setOpen] = useState(false)
@@ -37,6 +38,36 @@ export default function TeacherRegistration() {
     setOpen(false)
   }
 
+  function editTeacher(teacher) {
+    setEditing(teacher)
+    setForm({
+      name: teacher.name || '',
+      email: teacher.email || '',
+      dni: teacher.dni || '',
+      subject: teacher.subject || '',
+    })
+    setError('')
+    setOpen(true)
+  }
+
+  async function save(event) {
+    event.preventDefault()
+    if (!editing) return create(event)
+
+    setSaving(true)
+    setError('')
+    const result = await updateTeacher(editing.id, form)
+    setSaving(false)
+    if (!result.ok) {
+      setError(result.error || 'No se pudo actualizar al docente.')
+      return
+    }
+    toast(`Datos de ${result.user.name} actualizados.`)
+    setForm(emptyForm)
+    setEditing(null)
+    setOpen(false)
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -44,7 +75,7 @@ export default function TeacherRegistration() {
         title="Docentes y Profesores"
         text="Administra el cuerpo docente habilitado para la reserva de recursos y salas tecnológicas."
         action={
-          <Button type="button" className="gap-2 font-bold" onClick={() => { setError(''); setOpen(true) }}>
+          <Button type="button" className="gap-2 font-bold" onClick={() => { setForm(emptyForm); setEditing(null); setError(''); setOpen(true) }}>
             <UserPlus className="size-4" />
             Registrar docente
           </Button>
@@ -83,17 +114,43 @@ export default function TeacherRegistration() {
                 </Badge>
               ),
             },
+            {
+              key: 'actions',
+              label: 'Acciones',
+              render: (teacher) => (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Editar ${teacher.name}`}
+                  title="Editar docente"
+                  onClick={() => editTeacher(teacher)}
+                >
+                  <Pencil className="size-4" />
+                </Button>
+              ),
+            },
           ]}
         />
       </Panel>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) {
+          setEditing(null)
+          setError('')
+        }
+      }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Registrar nuevo docente</DialogTitle>
-            <DialogDescription>Crea una cuenta institucional para que el docente pueda ingresar y gestionar sus reservas de sala.</DialogDescription>
+            <DialogTitle>{editing ? 'Editar datos del docente' : 'Registrar nuevo docente'}</DialogTitle>
+            <DialogDescription>
+              {editing
+                ? 'Actualiza los datos personales y el área o asignatura del docente.'
+                : 'Crea una cuenta institucional para que el docente pueda ingresar y gestionar sus reservas de sala.'}
+            </DialogDescription>
           </DialogHeader>
-          <form className="grid gap-4" onSubmit={create}>
+          <form className="grid gap-4" onSubmit={save}>
             <Field label="Nombre completo *">
               <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} required />
             </Field>
@@ -109,7 +166,9 @@ export default function TeacherRegistration() {
             {error && <p role="alert" className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</p>}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar docente'}</Button>
+              <Button type="submit" disabled={saving}>
+                {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Registrar docente'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

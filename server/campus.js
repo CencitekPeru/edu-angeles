@@ -76,8 +76,35 @@ export function campusRouter() {
     res.status(201).json({ ok: true })
   }))
   router.delete('/api/categories/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
-    await getPool().query('DELETE FROM categories WHERE id = ?', [req.params.id])
-    res.json({ ok: true })
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [categories] = await connection.query('SELECT id, name FROM categories WHERE id = ? FOR UPDATE', [req.params.id])
+      if (!categories.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'La categoría ya no existe.' })
+      }
+      const [references] = await connection.query(
+        'SELECT COUNT(*) AS total FROM equipment WHERE category_id = ?',
+        [req.params.id],
+      )
+      const total = Number(references[0].total)
+      if (total > 0) {
+        await connection.rollback()
+        return res.status(409).json({
+          ok: false,
+          error: `No se puede quitar la categoría "${categories[0].name}" porque está vinculada a ${total} ${total === 1 ? 'equipo' : 'equipos'} del inventario.`,
+        })
+      }
+      await connection.query('DELETE FROM categories WHERE id = ?', [req.params.id])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }))
 
   router.get('/api/places', requireAuth, wrap(async (_req, res) => {
@@ -91,8 +118,35 @@ export function campusRouter() {
     res.status(201).json({ ok: true })
   }))
   router.delete('/api/places/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
-    await getPool().query('DELETE FROM places WHERE id = ?', [req.params.id])
-    res.json({ ok: true })
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [places] = await connection.query('SELECT id, name FROM places WHERE id = ? FOR UPDATE', [req.params.id])
+      if (!places.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'El ambiente ya no existe.' })
+      }
+      const [references] = await connection.query(
+        'SELECT COUNT(*) AS total FROM equipment WHERE place_id = ?',
+        [req.params.id],
+      )
+      const total = Number(references[0].total)
+      if (total > 0) {
+        await connection.rollback()
+        return res.status(409).json({
+          ok: false,
+          error: `No se puede quitar el ambiente "${places[0].name}" porque está asignado a ${total} ${total === 1 ? 'equipo' : 'equipos'} del inventario.`,
+        })
+      }
+      await connection.query('DELETE FROM places WHERE id = ?', [req.params.id])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }))
 
   router.get('/api/materials', requireAuth, wrap(async (_req, res) => {
@@ -244,6 +298,23 @@ export function campusRouter() {
     const [rows] = await getPool().query(`${incidentSql()} ORDER BY i.reported_on DESC, i.id DESC`)
     const incidents = rows.map(mapIncident).filter((item) => matchesIncident(item, req.query))
     res.json({ ok: true, incidents: req.user.role === 'admin' ? incidents : incidents })
+  }))
+
+  router.get('/api/incidents/:id', requireAuth, wrap(async (req, res) => {
+    const [rows] = await getPool().query(`${incidentSql()} WHERE i.id = ?`, [req.params.id])
+    if (!rows[0]) return res.status(404).json({ ok: false, error: 'Incidencia no encontrada.' })
+    const [photos] = await getPool().query(
+      'SELECT id, kind, path FROM incident_photos WHERE incident_id = ? ORDER BY id',
+      [req.params.id],
+    )
+    res.json({
+      ok: true,
+      incident: mapIncident(rows[0]),
+      photos: {
+        before: photos.filter((photo) => photo.kind === 'before'),
+        after: photos.filter((photo) => photo.kind === 'after'),
+      },
+    })
   }))
 
   router.post('/api/incidents', requireAuth, wrap(async (req, res) => {
