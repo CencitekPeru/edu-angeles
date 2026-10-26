@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Camera, ClipboardList, Clock3, MapPin, Pencil, Trash2, Wrench } from 'lucide-react'
+import { Camera, ClipboardList, Clock3, MapPin, Pencil, Trash2, Wrench, X } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
@@ -14,7 +14,7 @@ const empty = {
   type: 'Preventivo', status: 'Programado', activities: '', notes: '', responsibleId: '', nextDate: '',
 }
 
-function PhotoPreviews({ files }) {
+function PhotoPreviews({ files, onRemove }) {
   const [previews, setPreviews] = useState([])
 
   useEffect(() => {
@@ -27,9 +27,18 @@ function PhotoPreviews({ files }) {
 
   return (
     <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {previews.map(({ file, url }) => (
-        <figure key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-md border border-border/70">
+      {previews.map(({ file, url }, index) => (
+        <figure key={`${file.name}-${file.lastModified}-${index}`} className="relative overflow-hidden rounded-md border border-border/70">
           <img src={url} alt={`Vista previa: ${file.name}`} className="h-20 w-full object-cover" />
+          <button
+            type="button"
+            className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label={`Quitar ${file.name}`}
+            title="Quitar imagen"
+            onClick={() => onRemove(index)}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
           <figcaption className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{file.name}</figcaption>
         </figure>
       ))}
@@ -199,7 +208,7 @@ export function MaintenancePage({ mode = 'form' }) {
                       <Field label="Fotografías" hint={photos.length ? `${photos.length} imagen(es) lista(s) para guardar.` : 'Puedes seleccionar varias imágenes.'}>
                         <Input type="file" accept="image/*" multiple onChange={(e) => setPhotos(Array.from(e.target.files || []).filter((file) => file.type.startsWith('image/')))} />
                       </Field>
-                      <PhotoPreviews files={photos} />
+                      <PhotoPreviews files={photos} onRemove={(index) => setPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
                     </div>
                   </div>
                 </section>

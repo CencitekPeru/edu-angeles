@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Camera, Check, ChevronsUpDown, ClipboardList, Eye, Monitor, Wrench } from 'lucide-react'
+import { Camera, Check, ChevronsUpDown, ClipboardList, Eye, Monitor, Wrench, X } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { INCIDENT_STATUS } from '../../lib/school'
 import { useApp } from '../../context/AppContext'
@@ -17,7 +17,7 @@ const empty = {
   reportedOn: new Date().toISOString().slice(0, 10),
 }
 
-function ImagePreviews({ files, label }) {
+function ImagePreviews({ files, label, onRemove }) {
   const [previews, setPreviews] = useState([])
 
   useEffect(() => {
@@ -30,9 +30,18 @@ function ImagePreviews({ files, label }) {
 
   return (
     <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {previews.map(({ file, url }) => (
-        <figure key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-md border border-border/70">
+      {previews.map(({ file, url }, index) => (
+        <figure key={`${file.name}-${file.lastModified}-${index}`} className="relative overflow-hidden rounded-md border border-border/70">
           <img src={url} alt={`${label}: ${file.name}`} className="h-20 w-full object-cover" />
+          <button
+            type="button"
+            className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label={`Quitar ${file.name}`}
+            title="Quitar imagen"
+            onClick={() => onRemove(index)}
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
           <figcaption className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{file.name}</figcaption>
         </figure>
       ))}
@@ -217,11 +226,11 @@ export function IncidentsPage() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Fotos del problema">
                   <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setBefore)} />
-                  <ImagePreviews files={before} label="Foto del problema" />
+                  <ImagePreviews files={before} label="Foto del problema" onRemove={(index) => setBefore((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
                 </Field>
                 <Field label="Fotos después de la atención">
                   <Input type="file" accept="image/*" multiple onChange={(e) => fileList(e.target.files, setAfter)} />
-                  <ImagePreviews files={after} label="Foto después de la atención" />
+                  <ImagePreviews files={after} label="Foto después de la atención" onRemove={(index) => setAfter((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
                 </Field>
               </div>
             </IncidentSection>

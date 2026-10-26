@@ -272,6 +272,9 @@ export function FixedHoursPage() {
   const [rows, setRows] = useState([])
   const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
   const [openHour, setOpenHour] = useState(false)
+  const scheduleRooms = rooms.filter((room) =>
+    String(room.category || '').trim().toLowerCase() === 'salas' || /^sala(?:\s|$)/i.test(String(room.name || '').trim()),
+  )
 
   async function load() {
     const result = await api('/api/fixed-schedules')
@@ -307,7 +310,7 @@ export function FixedHoursPage() {
                   <Choice value={form.teacherId} onChange={(value) => setForm({ ...form, teacherId: value })} options={users.filter((item) => item.role === 'teacher').map((item) => ({ value: item.id, label: item.name }))} />
                 </Field>
                 <Field label="Sala">
-                  <Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={rooms.map((item) => ({ value: item.id, label: item.name }))} />
+                  <Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={scheduleRooms.map((item) => ({ value: item.id, label: item.name }))} />
                 </Field>
                 <Field label="Día de la semana">
                   <Choice value={form.weekday} onChange={(value) => setForm({ ...form, weekday: value })} options={WEEKDAYS.map((day) => ({ value: day.id, label: day.label }))} />

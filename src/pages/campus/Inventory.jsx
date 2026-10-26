@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, Camera, Cpu, MapPin, Pencil, Tag, Trash2 } from 'lucide-react'
+import { CalendarDays, Camera, Cpu, MapPin, Pencil, Tag, Trash2, X } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { Badge } from '@/components/ui/badge'
@@ -31,7 +31,7 @@ function EquipmentSection({ icon, title, description, children }) {
   )
 }
 
-function SelectedPhotoPreviews({ files }) {
+function SelectedPhotoPreviews({ files, onRemove }) {
   const [previews, setPreviews] = useState([])
 
   useEffect(() => {
@@ -40,9 +40,18 @@ function SelectedPhotoPreviews({ files }) {
     return () => next.forEach((preview) => URL.revokeObjectURL(preview.url))
   }, [files])
 
-  return previews.map(({ file, url }) => (
-    <div key={`${file.name}-${file.lastModified}`} className="overflow-hidden rounded-md border border-border/70">
+  return previews.map(({ file, url }, index) => (
+    <div key={`${file.name}-${file.lastModified}-${index}`} className="relative overflow-hidden rounded-md border border-border/70">
       <img src={url} alt={file.name} className="h-24 w-full object-cover" />
+      <button
+        type="button"
+        className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        aria-label={`Quitar ${file.name}`}
+        title="Quitar imagen"
+        onClick={() => onRemove(index)}
+      >
+        <X className="size-4" aria-hidden="true" />
+      </button>
       <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{file.name}</p>
     </div>
   ))
@@ -211,7 +220,7 @@ export function EquipmentPage() {
                           <img src={photo.path} alt="Foto del equipo" className="h-24 w-full object-cover" />
                         </a>
                       ))}
-                      <SelectedPhotoPreviews files={photos} />
+                      <SelectedPhotoPreviews files={photos} onRemove={(index) => setPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
                     </div>
                     <Field label="Agregar fotografías" hint={photos.length ? `${photos.length} foto(s) lista(s)` : 'Opcional, se guardan en el servidor.'}>
                       <Input type="file" accept="image/*" multiple onChange={(e) => setPhotos(Array.from(e.target.files || []))} />
