@@ -272,9 +272,7 @@ export function FixedHoursPage() {
   const [rows, setRows] = useState([])
   const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
   const [openHour, setOpenHour] = useState(false)
-  const scheduleRooms = rooms.filter((room) =>
-    String(room.category || '').trim().toLowerCase() === 'salas' || /^sala(?:\s|$)/i.test(String(room.name || '').trim()),
-  )
+  const scheduleRooms = rooms
 
   async function load() {
     const result = await api('/api/fixed-schedules')
@@ -284,6 +282,9 @@ export function FixedHoursPage() {
 
   async function save(event) {
     event.preventDefault()
+    if (!scheduleRooms.some((room) => Number(room.id) === Number(form.roomId))) {
+      return toast('Selecciona una sala exclusiva de cómputo.', 'bad')
+    }
     const result = await api('/api/fixed-schedules', { method: 'POST', body: { ...form, weekday: Number(form.weekday) } })
     if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
     toast('Horario fijo agregado. Ya bloquea el calendario.')
@@ -310,7 +311,8 @@ export function FixedHoursPage() {
                   <Choice value={form.teacherId} onChange={(value) => setForm({ ...form, teacherId: value })} options={users.filter((item) => item.role === 'teacher').map((item) => ({ value: item.id, label: item.name }))} />
                 </Field>
                 <Field label="Sala">
-                  <Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={scheduleRooms.map((item) => ({ value: item.id, label: item.name }))} />
+                  <Choice value={form.roomId} onChange={(value) => setForm({ ...form, roomId: value })} options={scheduleRooms.map((item) => ({ value: item.id, label: item.name }))} placeholder={scheduleRooms.length ? 'Seleccionar sala' : 'No hay salas disponibles'} />
+                  {scheduleRooms.length === 0 && <p className="text-xs text-muted-foreground">Crea una sala en “Categorías y ambientes” para asignarle un horario fijo.</p>}
                 </Field>
                 <Field label="Día de la semana">
                   <Choice value={form.weekday} onChange={(value) => setForm({ ...form, weekday: value })} options={WEEKDAYS.map((day) => ({ value: day.id, label: day.label }))} />
@@ -337,7 +339,7 @@ export function FixedHoursPage() {
               </Field>
               <DialogFooter className="border-t border-border/70 pt-4">
                 <Button type="button" variant="outline" onClick={() => setOpenHour(false)}>Cancelar</Button>
-                <Button type="submit">Guardar horario</Button>
+                <Button type="submit" disabled={scheduleRooms.length === 0}>Guardar horario</Button>
               </DialogFooter>
             </form>
           </DialogContent>
