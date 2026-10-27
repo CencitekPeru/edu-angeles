@@ -98,6 +98,7 @@ export default function CalendarPage() {
   const selected = rooms.some((room) => Number(room.id) === Number(roomId))
     ? roomId
     : rooms[0]?.id || ''
+  const selectedRoom = rooms.find((room) => Number(room.id) === Number(selected))
   const week = schoolWeek(new Date())
   const weeklyRequests = requests.filter((item) => item.date >= week[0] && item.date <= week[4])
   const pendingRequests = useMemo(() => requests
@@ -105,11 +106,12 @@ export default function CalendarPage() {
     .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
     .slice(0, 3), [requests])
 
-  const roomCalendars = useMemo(() => rooms.map((room) => {
+  const calendarRequests = useMemo(() => {
+    if (!selectedRoom) return []
     const roomRequests = requests.filter(
-      (item) => !item.roomId || Number(item.roomId) === Number(room.id),
+      (item) => Number(item.roomId) === Number(selectedRoom.id) || !item.roomId,
     )
-    const slots = fixedSchedules.filter((item) => Number(item.roomId) === Number(room.id))
+    const slots = fixedSchedules.filter((item) => Number(item.roomId) === Number(selectedRoom.id))
     const fixed = []
     const anchor = new Date()
     for (let offset = -21; offset <= 70; offset += 7) {
@@ -135,8 +137,8 @@ export default function CalendarPage() {
         }
       }
     }
-    return { room, requests: [...roomRequests, ...fixed] }
-  }), [rooms, requests, fixedSchedules])
+    return [...roomRequests, ...fixed]
+  }, [selectedRoom, requests, fixedSchedules])
 
   const upcoming = useMemo(() => requests
     .filter((item) =>
@@ -201,17 +203,21 @@ export default function CalendarPage() {
       {admin ? (
         <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,0.9fr)]">
           <div className="space-y-4">
-            {roomCalendars.map(({ room, requests: roomRequests }) => (
-              <section key={room.id} className={`space-y-2 rounded-xl ${Number(selected) === Number(room.id) ? 'ring-1 ring-primary/40' : ''}`}>
-                <h2 className="px-1 text-sm font-bold text-foreground">{room.name}</h2>
+            {selectedRoom ? (
+              <>
+                <h2 className="px-1 text-sm font-bold text-foreground">{selectedRoom.name}</h2>
                 <WeekBoard
-                  requests={roomRequests}
+                  requests={calendarRequests}
                   users={users}
                   initialDate={calendarDate}
                   onReserve={setCalendarDate}
                 />
-              </section>
-            ))}
+              </>
+            ) : (
+              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No hay salas de cómputo registradas. Crea una en “Categorías y ambientes”.
+              </p>
+            )}
             <CalendarLegend />
           </div>
           <aside className="space-y-4">
@@ -283,21 +289,22 @@ export default function CalendarPage() {
         <>
           <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="space-y-4">
-              {roomCalendars.map(({ room, requests: roomRequests }) => (
-                <section key={room.id} className={`space-y-2 rounded-xl ${Number(selected) === Number(room.id) ? 'ring-1 ring-primary/40' : ''}`}>
-                  <h2 className="px-1 text-sm font-bold text-foreground">{room.name}</h2>
+              {selectedRoom ? (
+                <>
+                  <h2 className="px-1 text-sm font-bold text-foreground">{selectedRoom.name}</h2>
                   <WeekBoard
-                    requests={roomRequests}
+                    requests={calendarRequests}
                     users={users}
                     canReserve={teacher}
                     initialDate={calendarDate}
-                    onReserve={(date) => {
-                      setCalendarDate(date)
-                      if (teacher) setRoomId(String(room.id))
-                    }}
+                    onReserve={setCalendarDate}
                   />
-                </section>
-              ))}
+                </>
+              ) : (
+                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  No hay salas de cómputo registradas. Solicita a administración que cree una en “Categorías y ambientes”.
+                </p>
+              )}
             </div>
             {teacher && (
               <NewRequest
