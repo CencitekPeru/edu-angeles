@@ -311,17 +311,20 @@ export function EquipmentPage() {
 }
 
 export function CatalogPage() {
-  const { toast } = useApp()
+  const { toast, refreshRooms } = useApp()
   const [categories, setCategories] = useState([])
   const [places, setPlaces] = useState([])
   const [category, setCategory] = useState('')
   const [place, setPlace] = useState('')
+  const [room, setRoom] = useState('')
   const [kind, setKind] = useState('')
+  const [rooms, setRooms] = useState([])
 
   async function load() {
-    const [cats, sites] = await Promise.all([api('/api/categories'), api('/api/places')])
+    const [cats, sites, roomData] = await Promise.all([api('/api/categories'), api('/api/places'), api('/api/rooms')])
     if (cats.ok) setCategories(cats.categories)
     if (sites.ok) setPlaces(sites.places)
+    if (roomData.ok) setRooms(roomData.rooms)
   }
   useEffect(() => { load() }, [])
 
@@ -330,6 +333,7 @@ export function CatalogPage() {
     if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
     clear('')
     setKind('')
+    if (path === '/api/rooms') await refreshRooms()
     load()
   }
 
@@ -337,30 +341,38 @@ export function CatalogPage() {
     const result = await api(`${path}/${item.id}`, { method: 'DELETE' })
     if (!result.ok) return toast(result.error || `No se pudo quitar ${label.toLowerCase()}.`, 'bad')
     toast(`${label} "${item.name}" quitado.`)
+    if (path === '/api/rooms') await refreshRooms()
     load()
   }
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
       <Panel title="Categorías" action={<Button type="button" size="sm" onClick={() => { setCategory(''); setKind('categoria') }}>Nueva categoría</Button>}>
         <ul className="space-y-2">{categories.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span><Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar categoría ${item.name}`} title={`Quitar categoría ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/categories', item, 'Categoría')}><Trash2 className="size-4" /></Button></li>)}</ul>
       </Panel>
       <Panel title="Ambientes" action={<Button type="button" size="sm" onClick={() => { setPlace(''); setKind('ambiente') }}>Nuevo ambiente</Button>}>
         <ul className="space-y-2">{places.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span><Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ambiente ${item.name}`} title={`Quitar ambiente ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/places', item, 'Ambiente')}><Trash2 className="size-4" /></Button></li>)}</ul>
       </Panel>
+      <Panel title="Salas exclusivas de cómputo" action={<Button type="button" size="sm" onClick={() => { setRoom(''); setKind('sala') }}>Nueva sala</Button>}>
+        <p className="mb-3 text-xs text-muted-foreground">Estas salas aparecerán en los calendarios y en el formulario de reservas.</p>
+        <ul className="space-y-2">{rooms.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span><Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar sala ${item.name}`} title={`Quitar sala ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/rooms', item, 'Sala')}><Trash2 className="size-4" /></Button></li>)}</ul>
+        {rooms.length === 0 && <p className="text-sm text-muted-foreground">No hay salas registradas.</p>}
+      </Panel>
       <Dialog open={Boolean(kind)} onOpenChange={(next) => { if (!next) setKind('') }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader className="border-b border-border/70 pb-4">
             <div className="flex items-start gap-3 pr-6">
               <div className="rounded-lg bg-primary/10 p-2 text-primary">
-                {kind === 'categoria' ? <Tag className="size-5" /> : <MapPin className="size-5" />}
+                {kind === 'categoria' ? <Tag className="size-5" /> : kind === 'ambiente' ? <MapPin className="size-5" /> : <Cpu className="size-5" />}
               </div>
               <div>
-                <DialogTitle>{kind === 'categoria' ? 'Nueva categoría' : 'Nuevo ambiente'}</DialogTitle>
+                <DialogTitle>{kind === 'categoria' ? 'Nueva categoría' : kind === 'ambiente' ? 'Nuevo ambiente' : 'Nueva sala de cómputo'}</DialogTitle>
                 <DialogDescription className="mt-1">
                   {kind === 'categoria'
                     ? 'Organiza los equipos con una categoría fácil de reconocer.'
-                    : 'Registra un espacio para ubicar los equipos del inventario.'}
+                    : kind === 'ambiente'
+                    ? 'Registra un espacio para ubicar los equipos del inventario.'
+                    : 'Registra una sala que estará disponible para reservar en los calendarios.'}
                 </DialogDescription>
               </div>
             </div>
@@ -370,27 +382,27 @@ export function CatalogPage() {
             onSubmit={(event) => {
               event.preventDefault()
               add(
-                kind === 'categoria' ? '/api/categories' : '/api/places',
-                kind === 'categoria' ? category : place,
-                kind === 'categoria' ? setCategory : setPlace,
+                kind === 'categoria' ? '/api/categories' : kind === 'ambiente' ? '/api/places' : '/api/rooms',
+                kind === 'categoria' ? category : kind === 'ambiente' ? place : room,
+                kind === 'categoria' ? setCategory : kind === 'ambiente' ? setPlace : setRoom,
               )
             }}
           >
             <section className="overflow-hidden rounded-lg border border-border/70">
               <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
-                {kind === 'categoria' ? <Tag className="mt-0.5 size-4 text-primary" /> : <MapPin className="mt-0.5 size-4 text-primary" />}
+                {kind === 'categoria' ? <Tag className="mt-0.5 size-4 text-primary" /> : kind === 'ambiente' ? <MapPin className="mt-0.5 size-4 text-primary" /> : <Cpu className="mt-0.5 size-4 text-primary" />}
                 <div>
                   <h3 className="text-sm font-semibold">Datos del catálogo</h3>
-                  <p className="text-xs text-muted-foreground">Este nombre aparecerá como opción en el inventario.</p>
+                  <p className="text-xs text-muted-foreground">{kind === 'sala' ? 'Este nombre aparecerá como opción en calendarios y reservas.' : 'Este nombre aparecerá como opción en el inventario.'}</p>
                 </div>
               </div>
               <div className="p-3">
-                <Field label={kind === 'categoria' ? 'Nombre de la categoría' : 'Nombre del ambiente'}>
+                <Field label={kind === 'categoria' ? 'Nombre de la categoría' : kind === 'ambiente' ? 'Nombre del ambiente' : 'Nombre de la sala'}>
                   <Input
                     autoFocus
-                    value={kind === 'categoria' ? category : place}
-                    onChange={(event) => (kind === 'categoria' ? setCategory : setPlace)(event.target.value)}
-                    placeholder={kind === 'categoria' ? 'Ej. Computadoras' : 'Ej. Aula 1'}
+                    value={kind === 'categoria' ? category : kind === 'ambiente' ? place : room}
+                    onChange={(event) => (kind === 'categoria' ? setCategory : kind === 'ambiente' ? setPlace : setRoom)(event.target.value)}
+                    placeholder={kind === 'categoria' ? 'Ej. Computadoras' : kind === 'ambiente' ? 'Ej. Aula 1' : 'Ej. Laboratorio de cómputo 3'}
                     maxLength={120}
                     required
                   />

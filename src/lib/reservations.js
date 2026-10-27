@@ -12,7 +12,6 @@ import {
 
 export const GRADES = ['1°', '2°', '3°', '4°', '5°', '6°']
 export const SECTIONS = ['A', 'B', 'C', 'Única']
-export const COMPUTER_ROOMS = ['Aula de cómputo 1', 'Aula de cómputo 2']
 
 export const STATUS = {
   pending: 'Pendiente',
@@ -93,6 +92,7 @@ export function validateRequest(requests, input, { ignoreId, teacherId } = {}) {
 
   if (!GRADES.includes(input.grade)) errors.grade = 'Selecciona un grado del 1° al 6°.'
   if (!input.section) errors.section = 'Selecciona el grupo.'
+  if (!input.roomId) errors.roomId = 'Selecciona una sala de cómputo.'
   if (!Number.isInteger(students) || students < 1 || students > LAB.capacity) {
     errors.students = `Indica entre 1 y ${LAB.capacity} estudiantes.`
   }
@@ -100,7 +100,7 @@ export function validateRequest(requests, input, { ignoreId, teacherId } = {}) {
   if (notes.length > 240) errors.notes = 'La nota admite hasta 240 caracteres.'
 
   let conflicts = []
-  if (!errors.date && !errors.endTime) {
+  if (!errors.date && !errors.endTime && input.roomId) {
     conflicts = conflictingRequests(requests, { date, start, end, ignoreId, roomId: input.roomId })
     if (conflicts.length) {
       errors.overlap = 'Ese horario se cruza con otra solicitud pendiente o aprobada.'

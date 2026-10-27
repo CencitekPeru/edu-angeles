@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { config } from './config.js'
 import { getPool, mapUser } from './db.js'
-import { COMPUTER_ROOMS, GRADES, SECTIONS } from '../src/lib/reservations.js'
+import { GRADES, SECTIONS } from '../src/lib/reservations.js'
 
 const uploadDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')
 fs.mkdirSync(uploadDir, { recursive: true })
@@ -33,10 +33,61 @@ export function campusRouter() {
 
   router.get('/api/rooms', requireAuth, wrap(async (_req, res) => {
     const [rows] = await getPool().query(
-      'SELECT id, name FROM rooms WHERE name IN (?, ?) ORDER BY id',
-      COMPUTER_ROOMS,
+      'SELECT id, name FROM rooms WHERE is_computer_room = 1 ORDER BY name',
     )
     res.json({ ok: true, rooms: rows })
+  }))
+
+  router.post('/api/rooms', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const name = String(req.body.name || '').trim()
+    if (name.length < 3) return res.status(400).json({ ok: false, error: 'Escribe un nombre de al menos 3 caracteres.' })
+    if (name.length > 120) return res.status(400).json({ ok: false, error: 'El nombre admite hasta 120 caracteres.' })
+    const [existing] = await getPool().query('SELECT id FROM rooms WHERE LOWER(name) = LOWER(?)', [name])
+    if (existing.length) return res.status(409).json({ ok: false, error: 'Ya existe una sala con ese nombre.' })
+    const [created] = await getPool().query(
+      'INSERT INTO rooms (name, is_computer_room) VALUES (?, 1)',
+      [name],
+    )
+    res.status(201).json({ ok: true, room: { id: created.insertId, name } })
+  }))
+
+  router.delete('/api/rooms/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [rooms] = await connection.query(
+        'SELECT id, name FROM rooms WHERE id = ? AND is_computer_room = 1 FOR UPDATE',
+        [req.params.id],
+      )
+      if (!rooms.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'La sala de cómputo ya no existe.' })
+      }
+      const [[requests]] = await connection.query(
+        'SELECT COUNT(*) AS total FROM requests WHERE room_id = ?',
+        [req.params.id],
+      )
+      const [[schedules]] = await connection.query(
+        'SELECT COUNT(*) AS total FROM fixed_schedules WHERE room_id = ?',
+        [req.params.id],
+      )
+      const total = Number(requests.total) + Number(schedules.total)
+      if (total > 0) {
+        await connection.rollback()
+        return res.status(409).json({
+          ok: false,
+          error: `No se puede eliminar "${rooms[0].name}" porque tiene ${total} ${total === 1 ? 'reserva u horario fijo asociado' : 'reservas u horarios fijos asociados'}.`,
+        })
+      }
+      await connection.query('DELETE FROM rooms WHERE id = ?', [req.params.id])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
   }))
 
   router.get('/api/fixed-schedules', requireAuth, wrap(async (_req, res) => {
@@ -55,6 +106,11 @@ export function campusRouter() {
     if (!GRADES.includes(String(body.grade || '')) || !SECTIONS.includes(String(body.section || ''))) {
       return res.status(400).json({ ok: false, error: 'Selecciona un grado del 1° al 6° y una sección válida.' })
     }
+    const [rooms] = await getPool().query(
+      'SELECT id FROM rooms WHERE id = ? AND is_computer_room = 1',
+      [body.roomId],
+    )
+    if (!rooms.length) return res.status(400).json({ ok: false, error: 'Selecciona una sala exclusiva de cómputo.' })
     await getPool().query(
       `INSERT INTO fixed_schedules (teacher_id, room_id, weekday, start_time, end_time, grade, section, purpose)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -490,8 +546,13 @@ export async function ensureCampus() {
   const db = getPool()
   await db.query(`CREATE TABLE IF NOT EXISTS rooms (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(120) NOT NULL UNIQUE
+    name VARCHAR(120) NOT NULL UNIQUE,
+    is_computer_room TINYINT(1) NOT NULL DEFAULT 0
   ) ENGINE=InnoDB`)
+  const [roomTypeColumn] = await db.query("SHOW COLUMNS FROM rooms LIKE 'is_computer_room'")
+  if (!roomTypeColumn.length) {
+    await db.query('ALTER TABLE rooms ADD COLUMN is_computer_room TINYINT(1) NOT NULL DEFAULT 0')
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS categories (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(120) NOT NULL UNIQUE
@@ -631,28 +692,29 @@ export async function ensureCampus() {
     await db.query('ALTER TABLE requests ADD CONSTRAINT fk_requests_room FOREIGN KEY (room_id) REFERENCES rooms(id)')
   }
 
-  for (const [index, name] of COMPUTER_ROOMS.entries()) {
-    const [existing] = await db.query('SELECT id FROM rooms WHERE name = ?', [name])
-    if (existing.length) continue
-    if (index === 0) {
-      const [legacyLab] = await db.query("SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1")
-      if (legacyLab.length) {
-        await db.query('UPDATE rooms SET name = ? WHERE id = ?', [name, legacyLab[0].id])
-        continue
-      }
+  const [legacyLab] = await db.query("SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1")
+  const [firstComputerRoom] = await db.query("SELECT id FROM rooms WHERE name = 'Aula de cómputo 1' LIMIT 1")
+  if (legacyLab.length && !firstComputerRoom.length) {
+    await db.query('UPDATE rooms SET name = ?, is_computer_room = 1 WHERE id = ?', ['Aula de cómputo 1', legacyLab[0].id])
+    const [secondComputerRoom] = await db.query("SELECT id FROM rooms WHERE name = 'Aula de cómputo 2' LIMIT 1")
+    if (!secondComputerRoom.length) {
+      await db.query("INSERT INTO rooms (name, is_computer_room) VALUES ('Aula de cómputo 2', 1)")
     }
-    await db.query('INSERT INTO rooms (name) VALUES (?)', [name])
+  } else if (legacyLab.length && firstComputerRoom.length) {
+    await db.query('UPDATE requests SET room_id = ? WHERE room_id = ?', [firstComputerRoom[0].id, legacyLab[0].id])
+    await db.query('UPDATE fixed_schedules SET room_id = ? WHERE room_id = ?', [firstComputerRoom[0].id, legacyLab[0].id])
+    await db.query('DELETE FROM rooms WHERE id = ?', [legacyLab[0].id])
   }
-  const [lab] = await db.query('SELECT id FROM rooms WHERE name = ? LIMIT 1', [COMPUTER_ROOMS[0]])
-  if (lab[0]) {
-    const [legacyLab] = await db.query("SELECT id FROM rooms WHERE name = 'Sala de cómputo' LIMIT 1")
-    if (legacyLab[0]) {
-      await db.query('UPDATE requests SET room_id = ? WHERE room_id = ?', [lab[0].id, legacyLab[0].id])
-      await db.query('UPDATE fixed_schedules SET room_id = ? WHERE room_id = ?', [lab[0].id, legacyLab[0].id])
-      await db.query('DELETE FROM rooms WHERE id = ?', [legacyLab[0].id])
-    }
-    await db.query('UPDATE requests SET room_id = ? WHERE room_id IS NULL', [lab[0].id])
+  await db.query(
+    "UPDATE rooms SET is_computer_room = 1 WHERE name IN ('Aula de cómputo 1', 'Aula de cómputo 2')",
+  )
+  const [computerRoomCount] = await db.query('SELECT COUNT(*) AS total FROM rooms WHERE is_computer_room = 1')
+  if (Number(computerRoomCount[0].total) === 0) {
+    await db.query("INSERT INTO rooms (name, is_computer_room) VALUES ('Aula de cómputo 1', 1)")
+    await db.query("INSERT INTO rooms (name, is_computer_room) VALUES ('Aula de cómputo 2', 1)")
   }
+  const [lab] = await db.query("SELECT id FROM rooms WHERE name = 'Aula de cómputo 1' LIMIT 1")
+  if (lab[0]) await db.query('UPDATE requests SET room_id = ? WHERE room_id IS NULL', [lab[0].id])
 
   const [categories] = await db.query('SELECT COUNT(*) AS total FROM categories')
   if (!categories[0].total) {

@@ -95,7 +95,9 @@ export default function CalendarPage() {
   const [saving, setSaving] = useState(false)
   const teacher = user.role === 'teacher'
   const admin = user.role === 'admin'
-  const selected = roomId || rooms[0]?.id || ''
+  const selected = rooms.some((room) => Number(room.id) === Number(roomId))
+    ? roomId
+    : rooms[0]?.id || ''
   const week = schoolWeek(new Date())
   const weeklyRequests = requests.filter((item) => item.date >= week[0] && item.date <= week[4])
   const pendingRequests = useMemo(() => requests

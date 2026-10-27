@@ -4,7 +4,7 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
-import { COMPUTER_ROOMS, GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
+import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
 import { config } from './config.js'
 import { campusRouter, ensureCampus } from './campus.js'
@@ -528,12 +528,12 @@ async function resolveRoomId(value) {
   const id = Number(value)
   if (id) {
     const [rows] = await pool.query(
-      'SELECT id FROM rooms WHERE id = ? AND name IN (?, ?)',
-      [id, ...COMPUTER_ROOMS],
+      'SELECT id FROM rooms WHERE id = ? AND is_computer_room = 1',
+      [id],
     )
     if (rows[0]) return rows[0].id
   }
-  const error = new Error('Selecciona una de las aulas de cómputo disponibles.')
+  const error = new Error('Selecciona una sala exclusiva de cómputo disponible.')
   error.status = 400
   throw error
 }

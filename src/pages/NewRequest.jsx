@@ -68,7 +68,9 @@ export default function NewRequest({
   }, [initialRoomId])
 
   // Ensure default roomId if none set and rooms become available
-  const activeRoomId = form.roomId || (rooms[0] ? rooms[0].id : '')
+  const activeRoomId = rooms.some((room) => Number(room.id) === Number(form.roomId))
+    ? form.roomId
+    : rooms[0]?.id || ''
 
   const { check, fixed } = useMemo(() => {
     const fixedList = fixedConflicts(fixedSchedules, {

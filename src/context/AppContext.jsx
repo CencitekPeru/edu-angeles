@@ -18,6 +18,12 @@ export function AppProvider({ children }) {
 
   useEffect(() => () => timers.current.forEach(clearTimeout), [])
 
+  async function refreshRooms() {
+    const data = await api('/api/rooms')
+    if (data.ok) setRooms(data.rooms)
+    return data
+  }
+
   async function refresh() {
     const data = await api('/api/bootstrap')
     if (!data.ok) {
@@ -32,8 +38,7 @@ export function AppProvider({ children }) {
     setUsers(data.users)
     setRequests(data.requests)
     setNotifications(data.notifications)
-    const [roomData, fixedData] = await Promise.all([api('/api/rooms'), api('/api/fixed-schedules')])
-    if (roomData.ok) setRooms(roomData.rooms)
+    const [, fixedData] = await Promise.all([refreshRooms(), api('/api/fixed-schedules')])
     if (fixedData.ok) setFixedSchedules(fixedData.schedules)
     return data
   }
@@ -53,8 +58,7 @@ export function AppProvider({ children }) {
             setUsers(data.users)
             setRequests(data.requests)
             setNotifications(data.notifications)
-            const [roomData, fixedData] = await Promise.all([api('/api/rooms'), api('/api/fixed-schedules')])
-            if (roomData.ok) setRooms(roomData.rooms)
+            const [, fixedData] = await Promise.all([refreshRooms(), api('/api/fixed-schedules')])
             if (fixedData.ok) setFixedSchedules(fixedData.schedules)
             setOffline(false)
           }
@@ -78,6 +82,7 @@ export function AppProvider({ children }) {
         setNotifications(data.notifications)
         setRequests(data.requests)
       })
+      refreshRooms()
     }, 20000)
     return () => clearInterval(timer)
   }, [user])
@@ -218,6 +223,7 @@ export function AppProvider({ children }) {
     deleteTeacher,
     markNotifications,
     resetDemo,
+    refreshRooms,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
