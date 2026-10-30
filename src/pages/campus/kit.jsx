@@ -1,6 +1,8 @@
-import { Children } from 'react'
+import { useId, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import {
   Table as ShadcnTable,
   TableHeader,
@@ -78,38 +80,102 @@ export function Filters({ children, className = '' }) {
 }
 
 export function Table({ columns, rows, empty = 'No hay registros.' }) {
+  return <PaginatedTable key={rows.length} columns={columns} rows={rows} empty={empty} />
+}
+
+function PaginatedTable({ columns, rows, empty }) {
+  const pageSizeId = useId()
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+  const pageCount = Math.max(1, Math.ceil(rows.length / pageSize))
+  const currentPage = Math.min(page, pageCount)
+  const startIndex = (currentPage - 1) * pageSize
+  const pageRows = rows.slice(startIndex, startIndex + pageSize)
+
   return (
-    <div className="rounded-lg border border-border/70 overflow-hidden">
-      <ShadcnTable>
-        <TableHeader className="bg-muted/40">
-          <TableRow className="hover:bg-transparent border-b border-border/70">
-            {columns.map((column) => (
-              <TableHead key={column.key} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
-                {column.label}
-              </TableHead>
-            ))}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.length === 0 ? (
-            <TableRow>
-              <TableCell className="px-4 py-8 text-center text-sm text-muted-foreground" colSpan={columns.length}>
-                {empty}
-              </TableCell>
+    <div className="overflow-hidden rounded-lg border border-border/70">
+      <div className="overflow-x-auto">
+        <ShadcnTable>
+          <TableHeader className="bg-muted/40">
+            <TableRow className="hover:bg-transparent border-b border-border/70">
+              {columns.map((column) => (
+                <TableHead key={column.key} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                  {column.label}
+                </TableHead>
+              ))}
             </TableRow>
-          ) : (
-            rows.map((row) => (
-              <TableRow key={row.id || JSON.stringify(row)} className="hover:bg-muted/30 transition-colors">
-                {columns.map((column) => (
-                  <TableCell key={column.key} className="px-4 py-3 text-sm text-foreground align-middle">
-                    {column.render ? column.render(row) : row[column.key]}
-                  </TableCell>
-                ))}
+          </TableHeader>
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell className="px-4 py-8 text-center text-sm text-muted-foreground" colSpan={columns.length}>
+                  {empty}
+                </TableCell>
               </TableRow>
-            ))
-          )}
-        </TableBody>
-      </ShadcnTable>
+            ) : (
+              pageRows.map((row) => (
+                <TableRow key={row.id || JSON.stringify(row)} className="hover:bg-muted/30 transition-colors">
+                  {columns.map((column) => (
+                    <TableCell key={column.key} className="px-4 py-3 text-sm text-foreground align-middle">
+                      {column.render ? column.render(row) : row[column.key]}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </ShadcnTable>
+      </div>
+      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor={pageSizeId} className="font-medium">Filas por página</label>
+          <select
+            id={pageSizeId}
+            className="h-8 rounded-md border border-input bg-background px-2 text-xs text-foreground"
+            value={pageSize}
+            onChange={(event) => {
+              setPageSize(Number(event.target.value))
+              setPage(1)
+            }}
+          >
+            {[10, 25, 50].map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+          <span>
+            {rows.length === 0
+              ? '0 registros'
+              : `Mostrando ${startIndex + 1}–${Math.min(startIndex + pageSize, rows.length)} de ${rows.length}`}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 self-end sm:self-auto">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-2"
+            aria-label="Página anterior"
+            disabled={currentPage <= 1}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            <ChevronLeft className="size-4" />
+            Anterior
+          </Button>
+          <span className="min-w-16 text-center font-medium text-foreground">
+            Página {currentPage} de {pageCount}
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1 px-2"
+            aria-label="Página siguiente"
+            disabled={currentPage >= pageCount}
+            onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
+          >
+            Siguiente
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+      </div>
     </div>
   )
 }
