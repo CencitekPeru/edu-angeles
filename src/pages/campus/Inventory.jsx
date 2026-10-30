@@ -68,6 +68,7 @@ export function EquipmentPage() {
   const [form, setForm] = useState(empty)
   const [photos, setPhotos] = useState([])
   const [savedPhotos, setSavedPhotos] = useState([])
+  const [deletingPhotoId, setDeletingPhotoId] = useState(null)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -126,6 +127,19 @@ export function EquipmentPage() {
     }
     close()
     load()
+  }
+
+  async function removeSavedPhoto(photo) {
+    if (!editing) return
+    setDeletingPhotoId(photo.id)
+    const result = await api(`/api/equipment/${editing}/photos/${photo.id}`, { method: 'DELETE' })
+    setDeletingPhotoId(null)
+    if (!result.ok) {
+      toast(result.error || 'No se pudo eliminar la fotografía.', 'bad')
+      return
+    }
+    setSavedPhotos((current) => current.filter((item) => item.id !== photo.id))
+    toast('Fotografía eliminada. Puedes agregar una nueva imagen.')
   }
 
   async function confirmDelete() {
@@ -213,17 +227,45 @@ export function EquipmentPage() {
                 </div>
 
                 <aside className="space-y-4 lg:col-span-4">
-                  <EquipmentSection icon={<Camera className="size-4" />} title="Fotografías del equipo" description="Imágenes de referencia del equipo.">
+                  <EquipmentSection icon={<Camera className="size-4" />} title="Fotografía del equipo" description="Solo se permite una imagen por equipo. Elimina la guardada para reemplazarla.">
                     <div className="grid grid-cols-2 gap-2">
                       {savedPhotos.map((photo) => (
-                        <a key={`saved-${photo.id}`} href={photo.path} target="_blank" rel="noreferrer" className="overflow-hidden rounded-md border border-border/70">
-                          <img src={photo.path} alt="Foto del equipo" className="h-24 w-full object-cover" />
-                        </a>
+                        <div key={`saved-${photo.id}`} className="relative overflow-hidden rounded-md border border-border/70">
+                          <a href={photo.path} target="_blank" rel="noreferrer" aria-label="Ver fotografía del equipo">
+                            <img src={photo.path} alt="Foto del equipo" className="h-24 w-full object-cover" />
+                          </a>
+                          <button
+                            type="button"
+                            className="absolute right-1 top-1 flex size-7 items-center justify-center rounded-full bg-black/70 text-white transition-colors hover:bg-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white disabled:cursor-wait disabled:opacity-60"
+                            aria-label="Eliminar fotografía guardada"
+                            title="Eliminar fotografía"
+                            disabled={deletingPhotoId === photo.id}
+                            onClick={() => removeSavedPhoto(photo)}
+                          >
+                            <X className="size-4" aria-hidden="true" />
+                          </button>
+                        </div>
                       ))}
                       <SelectedPhotoPreviews files={photos} onRemove={(index) => setPhotos((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
                     </div>
-                    <Field label="Agregar fotografías" hint={photos.length ? `${photos.length} foto(s) lista(s)` : 'Opcional, se guardan en el servidor.'}>
-                      <Input type="file" accept="image/*" multiple onChange={(e) => setPhotos(Array.from(e.target.files || []))} />
+                    <Field
+                      label="Agregar fotografía"
+                      hint={savedPhotos.length
+                        ? 'Elimina la fotografía guardada para poder reemplazarla.'
+                        : photos.length
+                        ? '1 fotografía lista para guardar.'
+                        : 'Opcional, se guarda en el servidor.'}
+                    >
+                      <Input
+                        type="file"
+                        accept="image/*"
+                        disabled={savedPhotos.length > 0}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0]
+                          setPhotos(file ? [file] : [])
+                          event.target.value = ''
+                        }}
+                      />
                     </Field>
                   </EquipmentSection>
 

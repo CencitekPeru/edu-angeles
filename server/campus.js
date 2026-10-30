@@ -119,6 +119,29 @@ export function campusRouter() {
     res.status(201).json({ ok: true })
   }))
 
+  router.patch('/api/fixed-schedules/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const body = req.body || {}
+    if (!GRADES.includes(String(body.grade || '')) || !SECTIONS.includes(String(body.section || ''))) {
+      return res.status(400).json({ ok: false, error: 'Selecciona un grado del 1° al 6° y una sección válida.' })
+    }
+    const [rooms] = await getPool().query(
+      'SELECT id FROM rooms WHERE id = ? AND is_computer_room = 1',
+      [body.roomId],
+    )
+    if (!rooms.length) return res.status(400).json({ ok: false, error: 'Selecciona una sala exclusiva de cómputo.' })
+    const [result] = await getPool().query(
+      `UPDATE fixed_schedules
+       SET teacher_id = ?, room_id = ?, weekday = ?, start_time = ?, end_time = ?, grade = ?, section = ?, purpose = ?
+       WHERE id = ?`,
+      [body.teacherId, body.roomId, body.weekday, body.startTime, body.endTime, body.grade, body.section, String(body.purpose || '').trim(), req.params.id],
+    )
+    if (!result.affectedRows) {
+      const [existing] = await getPool().query('SELECT id FROM fixed_schedules WHERE id = ?', [req.params.id])
+      if (!existing.length) return res.status(404).json({ ok: false, error: 'El horario fijo ya no existe.' })
+    }
+    res.json({ ok: true })
+  }))
+
   router.delete('/api/fixed-schedules/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     await getPool().query('DELETE FROM fixed_schedules WHERE id = ?', [req.params.id])
     res.json({ ok: true })
@@ -210,7 +233,7 @@ export function campusRouter() {
 
   router.get('/api/materials', requireAuth, wrap(async (_req, res) => {
     const [rows] = await getPool().query(
-      'SELECT id, name, category, quantity, unit, place, state, notes, updated_at AS updatedAt FROM material_inventory ORDER BY name',
+      'SELECT id, name, cod_minedu AS codMinedu, category, quantity, unit, place, state, notes, updated_at AS updatedAt FROM material_inventory ORDER BY name',
     )
     res.json({
       ok: true,
@@ -223,9 +246,9 @@ export function campusRouter() {
     const error = validateMaterial(input)
     if (error) return res.status(400).json({ ok: false, error })
     const [created] = await getPool().query(
-      `INSERT INTO material_inventory (name, category, quantity, unit, place, state, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [input.name, input.category, input.quantity, input.unit, input.place, input.state, input.notes],
+      `INSERT INTO material_inventory (name, cod_minedu, category, quantity, unit, place, state, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes],
     )
     res.status(201).json({ ok: true, id: created.insertId })
   }))
@@ -236,9 +259,9 @@ export function campusRouter() {
     if (error) return res.status(400).json({ ok: false, error })
     const [result] = await getPool().query(
       `UPDATE material_inventory
-       SET name = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?
+       SET name = ?, cod_minedu = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?
        WHERE id = ?`,
-      [input.name, input.category, input.quantity, input.unit, input.place, input.state, input.notes, req.params.id],
+      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, req.params.id],
     )
     if (!result.affectedRows) {
       const [rows] = await getPool().query('SELECT id FROM material_inventory WHERE id = ?', [req.params.id])
@@ -348,8 +371,67 @@ export function campusRouter() {
 
   router.post('/api/equipment/:id/photos', requireAuth, requireAdmin, upload.array('photos', 6), wrap(async (req, res) => {
     const files = req.files || []
-    for (const file of files) {
-      await getPool().query('INSERT INTO equipment_photos (equipment_id, path) VALUES (?, ?)', [req.params.id, `/api/uploads/${file.filename}`])
+    if (files.length !== 1) {
+      await removeUploadedFiles(files)
+      return res.status(400).json({ ok: false, error: 'Cada equipo solo puede tener una fotografía.' })
+    }
+
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [equipment] = await connection.query('SELECT id FROM equipment WHERE id = ? FOR UPDATE', [req.params.id])
+      if (!equipment.length) {
+        await connection.rollback()
+        await removeUploadedFiles(files)
+        return res.status(404).json({ ok: false, error: 'Equipo no encontrado.' })
+      }
+      const [photos] = await connection.query(
+        'SELECT id FROM equipment_photos WHERE equipment_id = ?',
+        [req.params.id],
+      )
+      if (photos.length) {
+        await connection.rollback()
+        await removeUploadedFiles(files)
+        return res.status(409).json({
+          ok: false,
+          error: 'Este equipo ya tiene una fotografía. Elimínala antes de cargar otra.',
+        })
+      }
+      await connection.query(
+        'INSERT INTO equipment_photos (equipment_id, path) VALUES (?, ?)',
+        [req.params.id, `/api/uploads/${files[0].filename}`],
+      )
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      await removeUploadedFiles(files)
+      throw error
+    } finally {
+      connection.release()
+    }
+  }))
+
+  router.delete('/api/equipment/:id/photos/:photoId', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const [photos] = await getPool().query(
+      'SELECT id, path FROM equipment_photos WHERE id = ? AND equipment_id = ?',
+      [req.params.photoId, req.params.id],
+    )
+    if (!photos.length) return res.status(404).json({ ok: false, error: 'La fotografía no existe para este equipo.' })
+
+    const fileName = path.basename(photos[0].path)
+    const filePath = path.join(uploadDir, fileName)
+    if (path.dirname(path.resolve(filePath)) !== path.resolve(uploadDir)) {
+      return res.status(400).json({ ok: false, error: 'La ruta de la fotografía no es válida.' })
+    }
+    await getPool().query(
+      'DELETE FROM equipment_photos WHERE id = ? AND equipment_id = ?',
+      [req.params.photoId, req.params.id],
+    )
+    try {
+      await fs.promises.unlink(filePath)
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
     }
     res.json({ ok: true })
   }))
@@ -564,6 +646,7 @@ export async function ensureCampus() {
   await db.query(`CREATE TABLE IF NOT EXISTS material_inventory (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(160) NOT NULL,
+    cod_minedu VARCHAR(80) NOT NULL DEFAULT '',
     category VARCHAR(100) NOT NULL,
     quantity INT UNSIGNED NOT NULL DEFAULT 0,
     unit VARCHAR(40) NOT NULL DEFAULT 'unidad',
@@ -575,6 +658,10 @@ export async function ensureCampus() {
     INDEX idx_material_inventory_name (name),
     INDEX idx_material_inventory_category (category)
   ) ENGINE=InnoDB`)
+  const [materialCodColumn] = await db.query("SHOW COLUMNS FROM material_inventory LIKE 'cod_minedu'")
+  if (!materialCodColumn.length) {
+    await db.query("ALTER TABLE material_inventory ADD COLUMN cod_minedu VARCHAR(80) NOT NULL DEFAULT '' AFTER name")
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS equipment (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(40) NOT NULL UNIQUE,
@@ -829,6 +916,16 @@ function incidentSql() {
     LEFT JOIN users u ON u.id = i.assignee_id`
 }
 
+async function removeUploadedFiles(files) {
+  for (const file of files) {
+    try {
+      await fs.promises.unlink(file.path)
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error
+    }
+  }
+}
+
 async function oneEquipment(id) {
   const [rows] = await getPool().query(`${equipmentSql()} WHERE e.id = ?`, [id])
   return rows[0] ? mapEquipment(rows[0]) : null
@@ -967,6 +1064,7 @@ function materialInput(body = {}) {
   body = body || {}
   return {
     name: String(body.name || '').trim(),
+    codMinedu: String(body.codMinedu || '').trim(),
     category: String(body.category || '').trim(),
     quantity: Number(body.quantity),
     unit: String(body.unit || '').trim(),
@@ -986,7 +1084,7 @@ function validateMaterial(input) {
   if (!['Bueno', 'Regular', 'Malo'].includes(input.state)) {
     return 'Selecciona un estado válido.'
   }
-  if (input.name.length > 160 || input.category.length > 100 || input.unit.length > 40 || input.place.length > 120) {
+  if (input.name.length > 160 || input.codMinedu.length > 80 || input.category.length > 100 || input.unit.length > 40 || input.place.length > 120) {
     return 'Revisa la longitud de los campos del material.'
   }
   return ''

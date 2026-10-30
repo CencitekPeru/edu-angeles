@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Eye, Pencil, Trash2 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { api } from '../../lib/api'
@@ -112,8 +112,16 @@ export function ReportsPage() {
       autoTable(doc, {
         ...tableOptions,
         startY: startY + 3,
-        head: [['Código', 'Equipo', 'Ambiente', 'Estado']],
-        body: equipment.map((row) => [row.code, row.name, row.place || 'Sin asignar', row.operationalState]),
+        head: [['Código', 'COD MINEDU', 'Equipo', 'Marca', 'Serie', 'Ambiente', 'Estado']],
+        body: equipment.map((row) => [
+          row.code || '—',
+          row.patrimonial || '—',
+          row.name || '—',
+          row.brand || '—',
+          row.serial || '—',
+          row.place || 'Sin asignar',
+          row.operationalState || '—',
+        ]),
       })
 
       startY = doc.lastAutoTable.finalY + 10
@@ -189,7 +197,12 @@ export function ReportsPage() {
       </div>
         <Panel title="Equipos por estado operativo">
           <Table rows={equipment} columns={[
-            { key: 'code', label: 'Código' }, { key: 'name', label: 'Equipo' }, { key: 'place', label: 'Ambiente' },
+            { key: 'code', label: 'Código' },
+            { key: 'patrimonial', label: 'COD MINEDU', render: (row) => row.patrimonial || '—' },
+            { key: 'name', label: 'Equipo' },
+            { key: 'brand', label: 'Marca', render: (row) => row.brand || '—' },
+            { key: 'serial', label: 'Serie', render: (row) => row.serial || '—' },
+            { key: 'place', label: 'Ambiente', render: (row) => row.place || 'Sin asignar' },
             { key: 'state', label: 'Estado', render: (row) => <Pill value={row.operationalState} /> },
           ]} />
         </Panel>
@@ -272,7 +285,29 @@ export function FixedHoursPage() {
   const [rows, setRows] = useState([])
   const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
   const [openHour, setOpenHour] = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [viewing, setViewing] = useState(null)
   const scheduleRooms = rooms
+
+  function resetForm() {
+    setForm({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
+    setEditing(null)
+  }
+
+  function editSchedule(row) {
+    setEditing(row.id)
+    setForm({
+      teacherId: String(row.teacherId),
+      roomId: String(row.roomId),
+      weekday: String(row.weekday),
+      startTime: row.startTime,
+      endTime: row.endTime,
+      grade: row.grade,
+      section: row.section,
+      purpose: row.purpose || '',
+    })
+    setOpenHour(true)
+  }
 
   async function load() {
     const result = await api('/api/fixed-schedules')
@@ -285,10 +320,13 @@ export function FixedHoursPage() {
     if (!scheduleRooms.some((room) => Number(room.id) === Number(form.roomId))) {
       return toast('Selecciona una sala exclusiva de cómputo.', 'bad')
     }
-    const result = await api('/api/fixed-schedules', { method: 'POST', body: { ...form, weekday: Number(form.weekday) } })
+    const result = editing
+      ? await api(`/api/fixed-schedules/${editing}`, { method: 'PATCH', body: { ...form, weekday: Number(form.weekday) } })
+      : await api('/api/fixed-schedules', { method: 'POST', body: { ...form, weekday: Number(form.weekday) } })
     if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
-    toast('Horario fijo agregado. Ya bloquea el calendario.')
+    toast(editing ? 'Horario fijo actualizado.' : 'Horario fijo agregado. Ya bloquea el calendario.')
     setOpenHour(false)
+    resetForm()
     load()
   }
 
@@ -297,12 +335,12 @@ export function FixedHoursPage() {
       <Panel title="Horarios fijos semanales">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-sm text-slate-600">Estos bloques aparecen solos cada semana y no permiten otra reserva en la misma sala.</p>
-          {user.role === 'admin' && <Button type="button" onClick={() => setOpenHour(true)}>Agregar horario</Button>}
+          {user.role === 'admin' && <Button type="button" onClick={() => { resetForm(); setOpenHour(true) }}>Agregar horario</Button>}
         </div>
-        <Dialog open={openHour} onOpenChange={setOpenHour}>
+        <Dialog open={openHour} onOpenChange={(open) => { setOpenHour(open); if (!open) resetForm() }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <DialogHeader className="border-b border-border/70 pb-4">
-              <DialogTitle>Horario fijo semanal</DialogTitle>
+              <DialogTitle>{editing ? 'Editar horario fijo' : 'Horario fijo semanal'}</DialogTitle>
               <DialogDescription>Organiza el horario del docente. Este bloque se repetirá cada semana y bloqueará la sala.</DialogDescription>
             </DialogHeader>
             <form onSubmit={save} className="grid gap-5">
@@ -338,10 +376,36 @@ export function FixedHoursPage() {
                 <Input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} />
               </Field>
               <DialogFooter className="border-t border-border/70 pt-4">
-                <Button type="button" variant="outline" onClick={() => setOpenHour(false)}>Cancelar</Button>
-                <Button type="submit" disabled={scheduleRooms.length === 0}>Guardar horario</Button>
+                <Button type="button" variant="outline" onClick={() => { setOpenHour(false); resetForm() }}>Cancelar</Button>
+                <Button type="submit" disabled={scheduleRooms.length === 0}>{editing ? 'Guardar cambios' : 'Guardar horario'}</Button>
               </DialogFooter>
             </form>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={Boolean(viewing)} onOpenChange={(open) => { if (!open) setViewing(null) }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Detalle del horario fijo</DialogTitle>
+              <DialogDescription>Este bloque se repite semanalmente y reserva la sala indicada.</DialogDescription>
+            </DialogHeader>
+            {viewing && (
+              <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                <div><dt className="font-semibold text-muted-foreground">Docente</dt><dd>{viewing.teacherName}</dd></div>
+                <div><dt className="font-semibold text-muted-foreground">Sala</dt><dd>{viewing.roomName}</dd></div>
+                <div><dt className="font-semibold text-muted-foreground">Día</dt><dd>{WEEKDAYS.find((day) => day.id === Number(viewing.weekday))?.label}</dd></div>
+                <div><dt className="font-semibold text-muted-foreground">Horario</dt><dd>{viewing.startTime}–{viewing.endTime}</dd></div>
+                <div><dt className="font-semibold text-muted-foreground">Grado / sección</dt><dd>{viewing.grade} {viewing.section}</dd></div>
+                <div className="sm:col-span-2"><dt className="font-semibold text-muted-foreground">Finalidad</dt><dd>{viewing.purpose || 'Sin finalidad indicada'}</dd></div>
+              </dl>
+            )}
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setViewing(null)}>Cerrar</Button>
+              {user.role === 'admin' && viewing && (
+                <Button type="button" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => { const selected = viewing; setViewing(null); editSchedule(selected) }}>
+                  <Pencil className="size-4" />
+                </Button>
+              )}
+            </DialogFooter>
           </DialogContent>
         </Dialog>
         <Table rows={rows} columns={[
@@ -351,7 +415,43 @@ export function FixedHoursPage() {
           { key: 'roomName', label: 'Sala' },
           { key: 'grade', label: 'Grado', render: (row) => `${row.grade} ${row.section}` },
           { key: 'purpose', label: 'Finalidad' },
-          { key: 'actions', label: '', render: (row) => user.role === 'admin' ? <button type="button" className="font-bold text-rose-700" onClick={async () => { await api(`/api/fixed-schedules/${row.id}`, { method: 'DELETE' }); load() }}>Quitar</button> : null },
+          {
+            key: 'actions',
+            label: 'Acciones',
+            render: (row) => (
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="icon-sm" aria-label="Ver horario" title="Ver horario" onClick={() => setViewing(row)}>
+                  <Eye className="size-4" />
+                </Button>
+                {user.role === 'admin' && (
+                  <>
+                    <Button type="button" variant="outline" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => editSchedule(row)}>
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="icon-sm"
+                      className="text-rose-700"
+                      aria-label="Quitar horario"
+                      title="Quitar horario"
+                      onClick={async () => {
+                        const result = await api(`/api/fixed-schedules/${row.id}`, { method: 'DELETE' })
+                        if (!result.ok) {
+                          toast(result.error || 'No se pudo quitar el horario.', 'bad')
+                          return
+                        }
+                        toast('Horario fijo eliminado.')
+                        load()
+                      }}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </>
+                )}
+              </div>
+            ),
+          },
         ]} />
       </Panel>
     </div>

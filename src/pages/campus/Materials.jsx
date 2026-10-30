@@ -13,6 +13,7 @@ import { Panel, Table } from './kit'
 
 const emptyMaterial = {
   name: '',
+  codMinedu: '',
   category: '',
   quantity: '0',
   unit: 'unidad',
@@ -31,6 +32,8 @@ export default function MaterialsPage() {
   const { toast } = useApp()
   const toastRef = useRef(toast)
   const [materials, setMaterials] = useState([])
+  const [categories, setCategories] = useState([])
+  const [places, setPlaces] = useState([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -58,6 +61,19 @@ export default function MaterialsPage() {
     Promise.resolve().then(() => {
       if (active) loadMaterials()
     })
+    Promise.all([api('/api/categories'), api('/api/places')]).then(([categoryResult, placeResult]) => {
+      if (!active) return
+      if (!categoryResult.ok) {
+        toastRef.current(categoryResult.error || 'No se pudieron cargar las categorías.', 'bad')
+      } else {
+        setCategories(categoryResult.categories)
+      }
+      if (!placeResult.ok) {
+        toastRef.current(placeResult.error || 'No se pudieron cargar los ambientes.', 'bad')
+      } else {
+        setPlaces(placeResult.places)
+      }
+    })
     return () => { active = false }
   }, [loadMaterials])
 
@@ -74,6 +90,13 @@ export default function MaterialsPage() {
     pieces: materials.reduce((total, item) => total + item.quantity, 0),
     attention: materials.filter((item) => item.state === 'Malo').length,
   }), [materials])
+  const placeOptions = useMemo(() => {
+    const options = places.map((place) => ({ value: place.name, label: place.name }))
+    if (form.place && !places.some((place) => place.name === form.place)) {
+      options.push({ value: form.place, label: `${form.place} (actual)` })
+    }
+    return options
+  }, [places, form.place])
 
   function openNew() {
     setEditingId(null)
@@ -85,6 +108,7 @@ export default function MaterialsPage() {
     setEditingId(item.id)
     setForm({
       name: item.name,
+      codMinedu: item.codMinedu || '',
       category: item.category,
       quantity: String(item.quantity),
       unit: item.unit,
@@ -105,6 +129,10 @@ export default function MaterialsPage() {
 
   async function save(event) {
     event.preventDefault()
+    if (!categories.some((category) => category.name === form.category)) {
+      toast('Selecciona una categoría registrada en la vista Categorías.', 'bad')
+      return
+    }
     setSaving(true)
     const payload = { ...form, quantity: Number(form.quantity) }
     const result = editingId
@@ -169,6 +197,7 @@ export default function MaterialsPage() {
           empty={loading ? 'Cargando inventario…' : query ? 'No hay materiales que coincidan con la búsqueda.' : 'Aún no hay materiales registrados. Agrega sillas, pizarras u otros recursos.'}
           columns={[
             { key: 'name', label: 'Material' },
+            { key: 'codMinedu', label: 'COD MINEDU', render: (item) => item.codMinedu || <span className="text-muted-foreground">—</span> },
             { key: 'category', label: 'Categoría' },
             { key: 'quantity', label: 'Existencias', render: (item) => <span className="font-semibold">{item.quantity} {item.unit}</span> },
             { key: 'place', label: 'Ubicación', render: (item) => item.place || <span className="text-muted-foreground">Sin asignar</span> },
@@ -227,8 +256,21 @@ export default function MaterialsPage() {
                   <Field label="Nombre del material *">
                     <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Sillas" maxLength={160} required />
                   </Field>
+                  <Field label="COD MINEDU">
+                    <Input value={form.codMinedu} onChange={(event) => setForm({ ...form, codMinedu: event.target.value })} placeholder="Código patrimonial MINEDU" maxLength={80} />
+                  </Field>
                   <Field label="Categoría *">
-                    <Input value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} placeholder="Ej. Mobiliario escolar" maxLength={100} required />
+                    <Choice
+                      value={form.category}
+                      onChange={(value) => setForm({ ...form, category: value })}
+                      placeholder={categories.length ? 'Selecciona una categoría' : 'No hay categorías registradas'}
+                      options={categories.map((category) => ({ value: category.name, label: category.name }))}
+                    />
+                    {categories.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Registra primero una categoría en la vista “Categorías”.
+                      </p>
+                    )}
                   </Field>
                 </div>
               </section>
@@ -264,7 +306,20 @@ export default function MaterialsPage() {
                 </div>
                 <div className="p-3">
                   <Field label="Ambiente o lugar">
-                    <Input value={form.place} onChange={(event) => setForm({ ...form, place: event.target.value })} placeholder="Ej. Aula 1" maxLength={120} />
+                    <Choice
+                      value={form.place || '__unassigned__'}
+                      onChange={(value) => setForm({ ...form, place: value === '__unassigned__' ? '' : value })}
+                      placeholder={placeOptions.length ? 'Selecciona un ambiente' : 'No hay ambientes registrados'}
+                      options={[
+                        { value: '__unassigned__', label: 'Sin asignar' },
+                        ...placeOptions,
+                      ]}
+                    />
+                    {places.length === 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Registra los ambientes en “Categorías y ambientes”.
+                      </p>
+                    )}
                   </Field>
                 </div>
               </section>
@@ -286,7 +341,7 @@ export default function MaterialsPage() {
             </div>
             <DialogFooter className="border-t border-border/70 pt-4">
               <Button type="button" variant="outline" onClick={() => closeDialog(false)}>Cancelar</Button>
-              <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+              <Button type="submit" disabled={saving || categories.length === 0}>{saving ? 'Guardando…' : 'Guardar'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
