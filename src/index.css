@@ -166,4 +166,5 @@ button:not(:disabled) {
 
 .toast-life {
   animation: toast-life 4.2s linear forwards;
+  
 }
