@@ -419,11 +419,13 @@ app.post('/api/notifications/read', requireAuth, wrap(async (req, res) => {
   res.json({ ok: true, notifications: rows.map(mapNotification) })
 }))
 
-app.post('/api/demo/reset', requireAuth, requireAdmin, wrap(async (_req, res) => {
-  await resetAndSeed()
-  await ensureCampus()
-  res.json({ ok: true })
-}))
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/demo/reset', requireAuth, requireAdmin, wrap(async (_req, res) => {
+    await resetAndSeed()
+    await ensureCampus()
+    res.json({ ok: true })
+  }))
+}
 
 app.use(express.static(frontendDirectory))
 app.use((req, res, next) => {
