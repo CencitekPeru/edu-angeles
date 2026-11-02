@@ -15,7 +15,10 @@ export async function initDb() {
     throw new Error('El nombre de la base de datos no es válido.')
   }
 
-  if (['localhost', '127.0.0.1', '::1'].includes(host.toLowerCase())) {
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    ['localhost', '127.0.0.1', '::1'].includes(host.toLowerCase())
+  ) {
     const bootstrap = await mysql.createConnection({ host, ...server })
     try {
       await bootstrap.query(
