@@ -796,7 +796,7 @@ export async function ensureCampus() {
     "UPDATE rooms SET is_computer_room = 1 WHERE name IN ('Aula de cómputo 1', 'Aula de cómputo 2')",
   )
   const [computerRoomCount] = await db.query('SELECT COUNT(*) AS total FROM rooms WHERE is_computer_room = 1')
-  if (Number(computerRoomCount[0].total) === 0) {
+  if (process.env.NODE_ENV !== 'production' && Number(computerRoomCount[0].total) === 0) {
     await db.query("INSERT INTO rooms (name, is_computer_room) VALUES ('Aula de cómputo 1', 1)")
     await db.query("INSERT INTO rooms (name, is_computer_room) VALUES ('Aula de cómputo 2', 1)")
   }
@@ -804,20 +804,22 @@ export async function ensureCampus() {
   if (lab[0]) await db.query('UPDATE requests SET room_id = ? WHERE room_id IS NULL', [lab[0].id])
 
   const [categories] = await db.query('SELECT COUNT(*) AS total FROM categories')
-  if (!categories[0].total) {
+  if (process.env.NODE_ENV !== 'production' && !categories[0].total) {
     for (const name of ['Equipo informático', 'Equipo multimedia', 'Impresora', 'Red']) {
       await db.query('INSERT INTO categories (name) VALUES (?)', [name])
     }
   }
   const [places] = await db.query('SELECT COUNT(*) AS total FROM places')
-  if (!places[0].total) {
+  if (process.env.NODE_ENV !== 'production' && !places[0].total) {
     for (const name of ['Aula de Innovación', 'Dirección', 'Aula 1', 'Aula 2', 'Sala de Redes', 'Sala de cómputo']) {
       await db.query('INSERT INTO places (name) VALUES (?)', [name])
     }
   }
 
   const [equipmentCount] = await db.query('SELECT COUNT(*) AS total FROM equipment')
-  if (!equipmentCount[0].total) await seedCampus(db, lab[0]?.id)
+  if (process.env.NODE_ENV !== 'production' && !equipmentCount[0].total) {
+    await seedCampus(db, lab[0]?.id)
+  }
 }
 
 async function seedCampus(db, labId) {
