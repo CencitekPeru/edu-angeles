@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertCircle, LogIn, Sparkles } from 'lucide-react'
-import campusBackground from '../assets/login-fondo.webp'
+import campusBackground from '../assets/login-colegio.jpeg'
 import schoolLogo from '../assets/logo-colegio.jpg'
 import { useApp } from '../context/AppContext'
 import { SCHOOL } from '../lib/school'
