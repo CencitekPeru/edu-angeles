@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Download, Eye, Pencil, Trash2 } from 'lucide-react'
+import { Download, Eye, FileSpreadsheet, Pencil, Trash2 } from 'lucide-react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { api } from '../../lib/api'
@@ -12,6 +12,66 @@ import { Choice, Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Panel, Pill, Table } from './kit'
 
+function addReportSheet(workbook, { name, title, subtitle, headers, rows, widths }) {
+  const worksheet = workbook.addWorksheet(name)
+  const headerRow = 5
+  const lastColumn = headers.length
+
+  worksheet.columns = widths.map((width) => ({ width }))
+  worksheet.mergeCells(1, 1, 1, lastColumn)
+  worksheet.mergeCells(2, 1, 2, lastColumn)
+  worksheet.mergeCells(3, 1, 3, lastColumn)
+  worksheet.getCell(1, 1).value = title
+  worksheet.getCell(2, 1).value = subtitle
+  worksheet.getCell(3, 1).value = `I.E. Los Ángeles · CIST | Generado el ${new Intl.DateTimeFormat('es-PE', { dateStyle: 'long' }).format(new Date())}`
+  worksheet.getRow(1).height = 30
+  worksheet.getRow(2).height = 22
+  worksheet.getRow(3).height = 20
+  worksheet.getCell(1, 1).font = { name: 'Aptos Display', size: 18, bold: true, color: { argb: 'FFFFFFFF' } }
+  worksheet.getCell(1, 1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } }
+  worksheet.getCell(2, 1).font = { name: 'Aptos', size: 11, bold: true, color: { argb: 'FF0F172A' } }
+  worksheet.getCell(3, 1).font = { name: 'Aptos', size: 9, italic: true, color: { argb: 'FF64748B' } }
+  worksheet.getCell(1, 1).alignment = { vertical: 'middle', indent: 1 }
+  worksheet.getCell(2, 1).alignment = { vertical: 'middle', indent: 1 }
+  worksheet.getCell(3, 1).alignment = { vertical: 'middle', indent: 1 }
+
+  const header = worksheet.getRow(headerRow)
+  header.values = [undefined, ...headers]
+  header.height = 24
+  header.eachCell((cell) => {
+    cell.font = { name: 'Aptos', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A5F' } }
+    cell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true }
+    cell.border = { bottom: { style: 'medium', color: { argb: 'FF0F172A' } } }
+  })
+
+  rows.forEach((values, index) => {
+    const row = worksheet.addRow(values)
+    row.height = 21
+    row.eachCell((cell) => {
+      cell.font = { name: 'Aptos', size: 10, color: { argb: 'FF1F2937' } }
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: index % 2 === 0 ? 'FFF1F5F9' : 'FFFFFFFF' },
+      }
+      cell.alignment = { vertical: 'middle', wrapText: true }
+      cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } }
+    })
+  })
+
+  worksheet.autoFilter = {
+    from: { row: headerRow, column: 1 },
+    to: { row: Math.max(headerRow, headerRow + rows.length), column: lastColumn },
+  }
+  worksheet.views = [{ state: 'frozen', ySplit: headerRow, topLeftCell: `A${headerRow + 1}` }]
+  worksheet.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+  worksheet.pageSetup.printTitlesRow = `${headerRow}:${headerRow}`
+  worksheet.pageSetup.margins = { left: 0.3, right: 0.3, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 }
+  worksheet.headerFooter.oddFooter = '&LI.E. Los Ángeles · CIST&RPágina &P de &N'
+  return worksheet
+}
+
 export function ReportsPage() {
   const { toast } = useApp()
   const toastRef = useRef(toast)
@@ -22,7 +82,7 @@ export function ReportsPage() {
   const [equipment, setEquipment] = useState([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
-  const [downloading, setDownloading] = useState(false)
+  const [downloadingFormat, setDownloadingFormat] = useState('')
 
   useEffect(() => {
     toastRef.current = toast
@@ -52,7 +112,7 @@ export function ReportsPage() {
   }, [])
 
   async function downloadPdf() {
-    setDownloading(true)
+    setDownloadingFormat('pdf')
     try {
       const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
       const pageWidth = doc.internal.pageSize.getWidth()
@@ -170,16 +230,114 @@ export function ReportsPage() {
       console.error('No se pudo generar el reporte PDF:', error)
       toastRef.current('No se pudo generar el PDF. Inténtalo nuevamente.', 'bad')
     } finally {
-      setDownloading(false)
+      setDownloadingFormat('')
+    }
+  }
+
+  async function downloadExcel() {
+    setDownloadingFormat('excel')
+    try {
+      const { default: ExcelJS } = await import('exceljs')
+      const workbook = new ExcelJS.Workbook()
+      workbook.creator = 'I.E. Los Ángeles · CIST'
+      workbook.subject = 'Reporte de gestión tecnológica'
+      workbook.title = 'Reporte de gestión tecnológica'
+      workbook.created = new Date()
+      workbook.modified = new Date()
+      workbook.company = 'I.E. Los Ángeles'
+      workbook.manager = 'CIST'
+
+      addReportSheet(workbook, {
+        name: 'Resumen',
+        title: 'Reporte de gestión tecnológica',
+        subtitle: 'Resumen general del inventario y la gestión de soporte',
+        headers: ['Indicador', 'Total'],
+        widths: [36, 18],
+        rows: [
+          ['Equipos registrados', equipment.length],
+          ['Mantenimientos registrados', maintenance.length],
+          ['Incidencias registradas', incidents.length],
+          ['Mantenimientos programados', summary?.maintenance.programados || 0],
+          ['Mantenimientos realizados', summary?.maintenance.realizados || 0],
+          ['Mantenimientos en proceso', summary?.maintenance.proceso || 0],
+          ['Mantenimientos pendientes', summary?.maintenance.pendientes || 0],
+        ],
+      })
+      addReportSheet(workbook, {
+        name: 'Equipos',
+        title: 'Equipos por estado operativo',
+        subtitle: 'Inventario de equipos tecnológicos registrados',
+        headers: ['Código', 'COD MINEDU', 'Equipo', 'Marca', 'Serie', 'Ambiente', 'Estado'],
+        widths: [18, 20, 32, 22, 24, 26, 20],
+        rows: equipment.map((row) => [
+          row.code || '—',
+          row.patrimonial || '—',
+          row.name || '—',
+          row.brand || '—',
+          row.serial || '—',
+          row.place || 'Sin asignar',
+          row.operationalState || '—',
+        ]),
+      })
+      addReportSheet(workbook, {
+        name: 'Mantenimientos',
+        title: 'Registro de mantenimientos',
+        subtitle: 'Seguimiento de mantenimientos de equipos',
+        headers: ['Código', 'Fecha', 'Código de equipo', 'Equipo', 'Tipo', 'Estado'],
+        widths: [18, 16, 20, 32, 24, 20],
+        rows: maintenance.map((row) => [
+          row.code || '—',
+          row.date || '—',
+          row.equipmentCode || '—',
+          row.equipmentName || '—',
+          row.type || '—',
+          row.status || '—',
+        ]),
+      })
+      addReportSheet(workbook, {
+        name: 'Incidencias',
+        title: 'Incidencias vinculadas al inventario',
+        subtitle: 'Registro de fallas, prioridades y estados',
+        headers: ['Código', 'Código de equipo', 'Falla', 'Prioridad', 'Estado'],
+        widths: [18, 22, 48, 18, 20],
+        rows: incidents.map((row) => [
+          row.code || '—',
+          row.equipmentCode || '—',
+          row.title || '—',
+          row.priority || '—',
+          row.status || '—',
+        ]),
+      })
+
+      const buffer = await workbook.xlsx.writeBuffer()
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `reporte-gestion-tecnologica-${new Date().toISOString().slice(0, 10)}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      toastRef.current('El reporte Excel se descargó.')
+    } catch (error) {
+      console.error('No se pudo generar el reporte Excel:', error)
+      toastRef.current('No se pudo generar el Excel. Inténtalo nuevamente.', 'bad')
+    } finally {
+      setDownloadingFormat('')
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button type="button" className="gap-2" onClick={downloadPdf} disabled={loading || loadError || downloading}>
+      <div className="flex flex-wrap justify-end gap-2">
+        <Button type="button" variant="outline" className="gap-2" onClick={downloadExcel} disabled={loading || loadError || Boolean(downloadingFormat)}>
+          <FileSpreadsheet className="size-4" aria-hidden="true" />
+          {downloadingFormat === 'excel' ? 'Generando Excel…' : 'Descargar en Excel'}
+        </Button>
+        <Button type="button" className="gap-2" onClick={downloadPdf} disabled={loading || loadError || Boolean(downloadingFormat)}>
           <Download className="size-4" aria-hidden="true" />
-          {downloading ? 'Generando PDF…' : 'Descargar en PDF'}
+          {downloadingFormat === 'pdf' ? 'Generando PDF…' : 'Descargar en PDF'}
         </Button>
       </div>
       <div className="space-y-4">
