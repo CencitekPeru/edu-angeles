@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { AlertCircle, LogIn, Sparkles } from 'lucide-react'
+import { AlertCircle, IdCard, LogIn, Mail, Sparkles } from 'lucide-react'
 import campusBackground from '../assets/login-colegio.jpeg'
 import schoolLogo from '../assets/logo-colegio.jpg'
 import { useApp } from '../context/AppContext'
@@ -25,8 +25,12 @@ export default function Login() {
   }, [])
 
   async function submit(nextEmail = email, nextDni = dni) {
-    if (!nextEmail.trim() || !nextDni.trim()) {
-      setError('Ingresa tu correo y DNI.')
+    if (!nextEmail.trim()) {
+      setError('Ingresa tu correo institucional.')
+      return
+    }
+    if (!/^\d{8}$/.test(nextDni)) {
+      setError('El DNI debe contener exactamente 8 dígitos.')
       return
     }
     setLoading(true)
@@ -85,25 +89,19 @@ export default function Login() {
       </section>
 
       {/* Login Form Panel (Right) */}
-      <section className="relative flex-1 lg:col-span-6 xl:col-span-5 flex flex-col justify-center px-6 py-12 sm:px-12 bg-background">
+      <section className="relative flex min-h-svh flex-1 flex-col items-center px-6 py-12 sm:px-12 lg:col-span-6 xl:col-span-5 bg-background">
         <div className="absolute top-6 right-6">
           <ThemeToggle />
         </div>
 
-        <div className="mx-auto w-full max-w-sm">
-          {/* Mobile school logo */}
-          <div className="mb-6 flex items-center gap-3 lg:hidden">
-            <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border bg-white">
-              <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full object-contain" />
-            </div>
-            <div>
-              <p className="text-sm font-black uppercase text-foreground">{SCHOOL.name}</p>
-              <p className="text-xs text-muted-foreground">{SCHOOL.place}</p>
-            </div>
-          </div>
-
+        <div className="my-auto w-full max-w-sm">
           <Card className="border-border shadow-sm">
-            <CardHeader className="space-y-1">
+            <div className="flex justify-center px-6 pt-6">
+              <div className="flex size-16 items-center justify-center overflow-hidden rounded-xl border border-border bg-white p-1 shadow-sm">
+                <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full object-contain" />
+              </div>
+            </div>
+            <CardHeader className="items-center space-y-1 text-center">
               <CardTitle className="text-2xl font-black tracking-tight text-foreground">
                 Iniciar sesión
               </CardTitle>
@@ -129,32 +127,48 @@ export default function Login() {
               >
                 <div className="space-y-1.5">
                   <Label htmlFor="email" className="text-xs font-semibold">Correo institucional</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    placeholder="nombre@colegio.edu"
-                    required
-                  />
+                  <div className="relative">
+                    <Mail
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      id="email"
+                      className="pl-9"
+                      type="email"
+                      autoComplete="username"
+                      value={email}
+                      onChange={(event) => setEmail(event.target.value)}
+                      placeholder="nombre@colegio.edu"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-1.5">
                   <Label htmlFor="dni" className="text-xs font-semibold">DNI</Label>
-                  <Input
-                    id="dni"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={dni}
-                    onChange={(event) => setDni(event.target.value.slice(0, 32))}
-                    placeholder="8 dígitos"
-                    maxLength={32}
-                    required
-                  />
+                  <div className="relative">
+                    <IdCard
+                      aria-hidden="true"
+                      className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                    />
+                    <Input
+                      id="dni"
+                      className="pl-9"
+                      type="text"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={dni}
+                      onChange={(event) => setDni(event.target.value.replace(/\D/g, '').slice(0, 8))}
+                      placeholder="8 dígitos"
+                      maxLength={8}
+                      minLength={8}
+                      pattern="[0-9]{8}"
+                      required
+                    />
+                  </div>
                   <p className="text-[11px] text-muted-foreground">
-                    Si tu cuenta antigua aún no tiene DNI registrado, usa tu contraseña anterior y actualiza el perfil al ingresar.
+                    Ingresa los 8 dígitos de tu DNI.
                   </p>
                 </div>
 
@@ -167,7 +181,7 @@ export default function Login() {
 
                 <Button type="submit" className="w-full gap-2 font-bold" disabled={loading}>
                   <LogIn className="size-4" />
-                  {loading ? 'Ingresando...' : 'Entrar al sistema'}
+                  {loading ? 'Verificando...' : 'Ingresar'}
                 </Button>
               </form>
 
