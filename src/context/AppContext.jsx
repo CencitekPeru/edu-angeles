@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { api, getToken, setToken } from '../lib/api'
 
 const AppContext = createContext(null)
+let toastSequence = 0
 
 export function AppProvider({ children }) {
   const [user, setUser] = useState(null)
@@ -88,7 +89,7 @@ export function AppProvider({ children }) {
   }, [user])
 
   function toast(message, tone = 'ok') {
-    const id = crypto.randomUUID()
+    const id = `toast-${Date.now()}-${++toastSequence}`
     setToasts((current) => [...current, { id, message, tone }])
     const timer = setTimeout(() => {
       setToasts((current) => current.filter((item) => item.id !== id))

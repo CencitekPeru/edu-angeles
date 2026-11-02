@@ -133,7 +133,7 @@ export default function Teachers() {
               </Field>
             </UserFormSection>
             {error && <p role="alert" className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</p>}
-            <DialogFooter className="border-t border-border/70 pt-4">
+            <DialogFooter className="sticky bottom-0 -mx-6 border-t border-border/70 bg-background px-6 py-3">
               <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button>
               <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Registrar usuario'}</Button>
             </DialogFooter>
@@ -251,7 +251,7 @@ export default function Teachers() {
                 )}
               </UserFormSection>
               {error && <p className="text-xs font-semibold text-destructive bg-destructive/10 p-2.5 rounded-lg">{error}</p>}
-              <DialogFooter className="border-t border-border/70 pt-4">
+              <DialogFooter className="sticky bottom-0 -mx-6 border-t border-border/70 bg-background px-6 py-3">
                 <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancelar</Button>
                 <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar cambios'}</Button>
               </DialogFooter>
