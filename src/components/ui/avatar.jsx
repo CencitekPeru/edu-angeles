@@ -26,6 +26,7 @@ function Avatar({
   className,
   size = "default",
   name,
+  image,
   children,
   ...props
 }) {
@@ -40,9 +41,12 @@ function Avatar({
       {...props}
     >
       {name ? (
-        <AvatarFallback className={cn("font-bold text-xs tracking-wider", getAvatarTone(name))}>
-          {getInitials(name)}
-        </AvatarFallback>
+        <>
+          {image && <AvatarImage src={image} alt={name} />}
+          <AvatarFallback className={cn("font-bold text-xs tracking-wider", getAvatarTone(name))}>
+            {getInitials(name)}
+          </AvatarFallback>
+        </>
       ) : children}
     </AvatarPrimitive.Root>
   )

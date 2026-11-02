@@ -45,6 +45,7 @@ export async function initDb() {
       name VARCHAR(120) NOT NULL,
       email VARCHAR(160) NOT NULL UNIQUE,
       dni VARCHAR(8) NULL,
+      profile_photo VARCHAR(255) NULL,
       password_hash VARCHAR(255) NOT NULL,
       role ENUM('admin', 'teacher') NOT NULL,
       subject VARCHAR(120) NOT NULL,
@@ -55,6 +56,8 @@ export async function initDb() {
 
   const [dniColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'dni'")
   if (!dniColumn.length) await pool.query('ALTER TABLE users ADD COLUMN dni VARCHAR(8) NULL AFTER email')
+  const [profilePhotoColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'profile_photo'")
+  if (!profilePhotoColumn.length) await pool.query('ALTER TABLE users ADD COLUMN profile_photo VARCHAR(255) NULL AFTER dni')
   const [dniIndex] = await pool.query("SHOW INDEX FROM users WHERE Key_name = 'uq_users_dni'")
   if (!dniIndex.length) await pool.query('ALTER TABLE users ADD UNIQUE INDEX uq_users_dni (dni)')
   for (const [email, dni] of [
@@ -171,6 +174,7 @@ export function mapUser(row) {
     name: row.name,
     email: row.email,
     dni: row.dni || '',
+    profilePhoto: row.profile_photo || null,
     role: row.role,
     subject: row.subject,
     active: Boolean(row.active),

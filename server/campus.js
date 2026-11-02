@@ -25,6 +25,20 @@ const upload = multer({
   },
 })
 
+const profileUpload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (_req, file, done) => {
+      const extension = { 'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp' }[file.mimetype]
+      done(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`)
+    },
+  }),
+  limits: { fileSize: 6 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, done) => {
+    done(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype))
+  },
+})
+
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
 export function campusRouter() {
@@ -553,6 +567,18 @@ export function campusRouter() {
       )
     }
     res.json({ ok: true })
+  }))
+
+  router.post('/api/profile/photo', requireAuth, profileUpload.array('photos', 1), wrap(async (req, res) => {
+    const file = req.files?.[0]
+    if (!file) return res.status(400).json({ ok: false, error: 'Selecciona una imagen válida.' })
+    const profilePhoto = `/api/uploads/${file.filename}`
+    await getPool().query('UPDATE users SET profile_photo = ? WHERE id = ?', [profilePhoto, req.user.id])
+    const [rows] = await getPool().query(
+      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?',
+      [req.user.id],
+    )
+    res.json({ ok: true, user: mapUser(rows[0]) })
   }))
 
   router.get('/api/parts', requireAuth, wrap(async (_req, res) => {
@@ -1161,7 +1187,7 @@ async function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, config.jwtSecret)
     const [rows] = await getPool().query(
-      'SELECT id, name, email, role, subject, active FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })

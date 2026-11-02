@@ -154,7 +154,7 @@ export default function Teachers() {
               return (
                 <li key={user.id} className="flex flex-col gap-3 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3 min-w-0">
-                    <Avatar name={user.name} size="default" />
+                    <Avatar name={user.name} image={user.profilePhoto} size="default" />
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <p className="font-bold text-sm text-foreground truncate">{user.name}</p>

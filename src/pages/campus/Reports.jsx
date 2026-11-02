@@ -559,7 +559,7 @@ export function FixedHoursPage() {
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setViewing(null)}>Cerrar</Button>
               {user.role === 'admin' && viewing && (
-                <Button type="button" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => { const selected = viewing; setViewing(null); editSchedule(selected) }}>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => { const selected = viewing; setViewing(null); editSchedule(selected) }}>
                   <Pencil className="size-4" />
                 </Button>
               )}
@@ -578,19 +578,19 @@ export function FixedHoursPage() {
             label: 'Acciones',
             render: (row) => (
               <div className="flex items-center gap-2">
-                <Button type="button" variant="outline" size="icon-sm" aria-label="Ver horario" title="Ver horario" onClick={() => setViewing(row)}>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Ver horario" title="Ver horario" onClick={() => setViewing(row)}>
                   <Eye className="size-4" />
                 </Button>
                 {user.role === 'admin' && (
                   <>
-                    <Button type="button" variant="outline" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => editSchedule(row)}>
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => editSchedule(row)}>
                       <Pencil className="size-4" />
                     </Button>
                     <Button
                       type="button"
-                      variant="destructive"
+                      variant="ghost"
                       size="icon-sm"
-                      className="text-rose-700"
+                      className="text-rose-700 hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/30"
                       aria-label="Quitar horario"
                       title="Quitar horario"
                       onClick={async () => {

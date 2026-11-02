@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Camera } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Avatar } from '../components/ui'
 import { Badge } from '@/components/ui/badge'
@@ -8,11 +9,34 @@ import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 
 export default function ProfilePage() {
-  const { user, updateProfile, toast } = useApp()
+  const { user, updateProfile, updateProfilePhoto, toast } = useApp()
   const [name, setName] = useState(user.name || '')
   const [email, setEmail] = useState(user.email || '')
   const [dni, setDni] = useState(user.dni || '')
   const [loading, setLoading] = useState(false)
+  const [photoLoading, setPhotoLoading] = useState(false)
+
+  async function uploadPhoto(event) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      toast('La foto debe estar en formato JPG, PNG o WebP.', 'bad')
+      return
+    }
+    if (file.size > 6 * 1024 * 1024) {
+      toast('La foto no debe superar los 6 MB.', 'bad')
+      return
+    }
+    setPhotoLoading(true)
+    const result = await updateProfilePhoto(file)
+    setPhotoLoading(false)
+    if (!result.ok) {
+      toast(result.error || 'No se pudo subir la foto.', 'bad')
+      return
+    }
+    toast('Foto de perfil actualizada.')
+  }
 
   async function save(event) {
     event.preventDefault()
@@ -38,13 +62,25 @@ export default function ProfilePage() {
       </div>
 
       <Card>
-        <CardHeader className="flex flex-row items-center gap-4">
-          <Avatar name={user.name} size="lg" />
+        <CardHeader className="flex flex-row flex-wrap items-center gap-4">
+          <Avatar name={user.name} image={user.profilePhoto} size="lg" />
           <div className="space-y-1">
             <CardTitle>{user.name}</CardTitle>
             <CardDescription>{user.email}</CardDescription>
             <Badge variant="outline">{user.role === 'admin' ? 'Coordinación' : user.subject || 'Docente'}</Badge>
           </div>
+          <label className="ml-auto inline-flex cursor-pointer items-center gap-2 rounded-md border border-border px-3 py-2 text-sm font-medium transition-colors hover:bg-muted">
+            <Camera className="size-4" aria-hidden="true" />
+            {photoLoading ? 'Subiendo…' : 'Cambiar foto'}
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={uploadPhoto}
+              disabled={photoLoading}
+              aria-label="Subir foto de perfil"
+            />
+          </label>
         </CardHeader>
         <CardContent>
           <form className="grid gap-4 sm:max-w-xl" onSubmit={save}>

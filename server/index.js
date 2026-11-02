@@ -65,12 +65,12 @@ app.post('/api/auth/login', wrap(async (req, res) => {
 }))
 
 app.get('/api/auth/me', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: rows[0] ? mapUser(rows[0]) : req.user })
 }))
 
 app.get('/api/profile', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
   if (!rows[0]) return res.status(404).json({ ok: false, error: 'No se encontró el perfil.' })
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
@@ -91,13 +91,13 @@ app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
   const [duplicateDni] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
   if (duplicateDni.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   await pool.query('UPDATE users SET name = ?, email = ?, dni = ? WHERE id = ?', [name, email, dni, req.user.id])
-  const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
 app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
   const [users, requests, notifications] = await Promise.all([
-    pool.query(`SELECT id, name, email, ${req.user.role === 'admin' ? 'dni, ' : ''}role, subject, active FROM users ORDER BY role DESC, name`),
+    pool.query(`SELECT id, name, email, ${req.user.role === 'admin' ? 'dni, ' : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
     loadRequests(req.user),
     pool.query(
       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30',
@@ -319,7 +319,7 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
     'INSERT INTO users (name, email, dni, password_hash, role, subject) VALUES (?, ?, ?, ?, ?, ?)',
     [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject],
   )
-  const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [created.insertId])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [created.insertId])
   const user = mapUser(rows[0])
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
@@ -350,7 +350,7 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
     const [rows] = await pool.query('SELECT id FROM users WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
   }
-  const [rows] = await pool.query('SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ?', [req.params.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.params.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
@@ -490,7 +490,7 @@ async function requireAuth(req, res, next) {
   try {
     const payload = jwt.verify(token, config.jwtSecret)
     const [rows] = await pool.query(
-      'SELECT id, name, email, dni, role, subject, active FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })

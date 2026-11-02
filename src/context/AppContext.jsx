@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
-import { api, getToken, setToken } from '../lib/api'
+import { api, getToken, setToken, upload } from '../lib/api'
 
 const AppContext = createContext(null)
 let toastSequence = 0
@@ -163,6 +163,12 @@ export function AppProvider({ children }) {
     return result
   }
 
+  async function updateProfilePhoto(file) {
+    const result = await upload('/api/profile/photo', [file])
+    if (result.ok) setUser(result.user)
+    return result
+  }
+
   async function setTeacherActive(id, active) {
     const result = await api(`/api/users/${id}/active`, { method: 'POST', body: { active } })
     if (result.ok) await refresh()
@@ -220,6 +226,7 @@ export function AppProvider({ children }) {
     addUser,
     updateTeacher,
     updateProfile,
+    updateProfilePhoto,
     setTeacherActive,
     deleteTeacher,
     markNotifications,

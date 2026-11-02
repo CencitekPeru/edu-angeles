@@ -24,6 +24,7 @@ import {
   X,
 } from 'lucide-react'
 import { SCHOOL } from '../lib/school'
+import schoolLogo from '../assets/logo-colegio.jpg'
 import { useApp } from '../context/AppContext'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -193,7 +194,7 @@ export default function Layout() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="relative flex items-center gap-2.5 h-10 px-2 rounded-full hover:bg-muted">
-                    <Avatar name={user.name} size="sm" />
+                    <Avatar name={user.name} image={user.profilePhoto} size="sm" />
                     <div className="hidden md:flex flex-col text-left">
                       <span className="text-xs font-bold text-foreground leading-tight truncate max-w-[120px]">
                         {user.name.split(' ')[0]}
@@ -268,7 +269,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                   aria-label="Expandir menú"
                   title="Expandir menú"
                 >
-                  <span className="text-xl">🎓</span>
+                  <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full rounded-xl object-contain" />
                 </button>
               </div>
             </TooltipTrigger>
@@ -299,8 +300,8 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
         </div>
       ) : (
         <div className="mb-6 flex items-center gap-3 px-1">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white text-xl">
-            🎓
+          <div className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5">
+            <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full rounded-lg object-contain" />
           </div>
           <div className="min-w-0 flex-1">
             <h1 className="text-xs font-black uppercase tracking-wider text-white truncate">
@@ -422,7 +423,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
         ) : (
           <>
             <div className="flex items-center gap-3 px-2 py-1.5 rounded-lg bg-white/5 border border-white/10">
-              <Avatar name={user.name} size="sm" />
+              <Avatar name={user.name} image={user.profilePhoto} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-white truncate">{user.name}</p>
                 <p className="text-[10px] text-white/60 truncate">{user.email}</p>
