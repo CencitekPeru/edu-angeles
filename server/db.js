@@ -47,13 +47,30 @@ export async function initDb() {
       dni VARCHAR(8) NULL,
       profile_photo VARCHAR(255) NULL,
       password_hash VARCHAR(255) NOT NULL,
-      role ENUM('admin', 'teacher') NOT NULL,
+      role ENUM('admin', 'teacher', 'director', 'auxiliar') NOT NULL,
       subject VARCHAR(120) NOT NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB
   `)
 
+  const [roleColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'role'")
+  if (roleColumn[0] && !String(roleColumn[0].Type).includes('director')) {
+    await pool.query("ALTER TABLE users MODIFY role ENUM('admin', 'teacher', 'director', 'auxiliar') NOT NULL")
+  }
+  // Extended teacher profile (Docentes view).
+  for (const [name, type] of [
+    ['first_names', "VARCHAR(120) NOT NULL DEFAULT ''"],
+    ['last_names', "VARCHAR(120) NOT NULL DEFAULT ''"],
+    ['birth_date', 'DATE NULL'],
+    ['gender', "VARCHAR(20) NOT NULL DEFAULT ''"],
+    ['phone', "VARCHAR(30) NOT NULL DEFAULT ''"],
+    ['employment_condition', "VARCHAR(40) NOT NULL DEFAULT ''"],
+    ['notes', "VARCHAR(500) NOT NULL DEFAULT ''"],
+  ]) {
+    const [existing] = await pool.query('SHOW COLUMNS FROM users LIKE ?', [name])
+    if (!existing.length) await pool.query(`ALTER TABLE users ADD COLUMN ${name} ${type}`)
+  }
   const [dniColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'dni'")
   if (!dniColumn.length) await pool.query('ALTER TABLE users ADD COLUMN dni VARCHAR(8) NULL AFTER email')
   const [profilePhotoColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'profile_photo'")
@@ -178,6 +195,15 @@ export function mapUser(row) {
     role: row.role,
     subject: row.subject,
     active: Boolean(row.active),
+    ...(row.first_names !== undefined ? {
+      firstNames: row.first_names || '',
+      lastNames: row.last_names || '',
+      birthDate: row.birth_date ? String(row.birth_date).slice(0, 10) : '',
+      gender: row.gender || '',
+      phone: row.phone || '',
+      employmentCondition: row.employment_condition || '',
+      notes: row.notes || '',
+    } : {}),
   }
 }
 

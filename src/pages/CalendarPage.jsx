@@ -1,392 +1,352 @@
 import { useMemo, useState } from 'react'
-import {
-  CalendarDays,
-  Check,
-  Clock3,
-  Eye,
-  FileBarChart,
-  LockKeyhole,
-  Settings2,
-  Wrench,
-  X,
-} from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { CalendarCheck, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Laptop, Plus, X, XCircle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
-import { WeekBoard } from '../components/Schedule'
-import { PageHeader, StatusBadge } from '../components/ui'
+import { isStaff, useCan } from '../lib/permissions'
+import { GRADES, SECTIONS, STATUS, personName } from '../lib/reservations'
+import { LAB, addDays, isPastEnd, parseISODate, schoolWeek, toISODate, toMinutes, todayISO } from '../lib/time'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Choice } from '@/components/ui/field'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Table } from './campus/kit'
-import NewRequest from './NewRequest'
-import { isPastEnd, nextBookableDate, parseISODate, schoolWeek } from '../lib/time'
-import { personName } from '../lib/reservations'
+import { cn } from '@/lib/utils'
+import { PageHeader, StatCard } from './campus/kit'
+import { FilterLabel, Select, StatusChip, allOption, longDate } from './attendance/shared'
+import { REQUEST_META, requestCode } from './reservations/shared'
+import { CalendarLegend, MonthCalendar } from './reservations/MonthCalendar'
+import NewRequestDialog from './reservations/NewRequestDialog'
 
-function SummaryCard({ icon: Icon, label, value, hint, tone }) {
-  const tones = {
-    blue: 'border-sky-500/20 bg-sky-500/5 text-sky-700 dark:text-sky-300',
-    amber: 'border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300',
-    green: 'border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300',
-    red: 'border-rose-500/20 bg-rose-500/5 text-rose-700 dark:text-rose-300',
-  }
+const DAY_START = toMinutes(LAB.open)
+const DAY_END = toMinutes(LAB.close)
+const HOUR_HEIGHT = 56
+const HOURS = Array.from({ length: Math.ceil((DAY_END - DAY_START) / 60) }, (_, index) => DAY_START + index * 60)
+const fmt = (mins) => `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`
 
-  return (
-    <Card className={`border shadow-xs ${tones[tone]}`}>
-      <CardContent className="flex items-center gap-3 p-3 sm:p-4">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-current/10">
-          <Icon className="size-5" />
-        </span>
-        <div className="min-w-0">
-          <p className="text-2xl font-extrabold leading-none text-foreground">{value}</p>
-          <p className="mt-1 truncate text-xs font-bold">{label}</p>
-          <p className="truncate text-[10px] text-muted-foreground">{hint}</p>
-        </div>
-      </CardContent>
-    </Card>
-  )
+const BLOCK = {
+  approved: 'border-border bg-[#f1f7f3] text-[#24503a] dark:border-green-500/40 dark:bg-green-500/15 dark:text-green-100',
+  pending: 'border-[#ead9b8] bg-[#fbf6ec] text-[#6f4a10] dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-100',
+  rejected: 'border-border bg-[#fbf1f0] text-[#7d2621] dark:border-rose-500/40 dark:bg-rose-500/15 dark:text-rose-100',
+  fixed: 'border-slate-300 bg-slate-50 text-slate-800 dark:border-violet-500/40 dark:bg-violet-500/15 dark:text-violet-100',
+}
+const BLOCK_ICON = { approved: CheckCircle2, pending: Clock, rejected: XCircle, fixed: CalendarDays }
+const ICON_TONE = { approved: 'text-[#3f7d5c]', pending: 'text-[#b7832f]', rejected: 'text-[#b4413c]', fixed: 'text-primary' }
+
+function dayHeader(iso) {
+  const date = parseISODate(iso)
+  const weekday = new Intl.DateTimeFormat('es-PE', { weekday: 'short' }).format(date).replace('.', '')
+  const day = new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: 'short' }).format(date).replace('.', '')
+  return { weekday: weekday.charAt(0).toUpperCase() + weekday.slice(1), day }
 }
 
-function QuickAction({ to, icon: Icon, children, tone }) {
-  return (
-    <Button asChild variant="outline" className={`h-auto min-h-11 justify-start gap-2 px-3 py-2 text-xs font-bold ${tone}`}>
-      <Link to={to}>
-        <Icon className="size-4 shrink-0" />
-        {children}
-      </Link>
-    </Button>
-  )
-}
-
-function CalendarLegend() {
-  const items = [
-    { label: 'Horario fijo', color: 'bg-indigo-600' },
-    { label: 'Reserva confirmada', color: 'bg-emerald-600' },
-    { label: 'Solicitud pendiente', color: 'bg-amber-500' },
-  ]
-
-  return (
-    <Card className="border-border/80 shadow-xs">
-      <CardHeader className="border-b border-border/70 bg-muted/30 px-4 py-3">
-        <CardTitle className="flex items-center gap-2 text-sm font-bold">
-          <CalendarDays className="size-4 text-primary" />
-          Leyenda de horarios
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-wrap gap-x-6 gap-y-3 p-4">
-        {items.map((item) => (
-          <div key={item.label} className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className={`size-3 rounded-sm ${item.color}`} />
-            {item.label}
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  )
+function rangeLabel(days) {
+  const first = parseISODate(days[0])
+  const last = parseISODate(days.at(-1))
+  if (days.length === 1) return longDate(days[0])
+  const month = new Intl.DateTimeFormat('es-PE', { month: 'long', year: 'numeric' }).format(last)
+  return `${String(first.getDate()).padStart(2, '0')} – ${String(last.getDate()).padStart(2, '0')} de ${month}`
 }
 
 export default function CalendarPage() {
   const { user, requests, users, rooms, fixedSchedules, decideRequest, toast } = useApp()
+  // Staff (coordination, direction) see the management view; only coordination approves or rejects.
+  const admin = isStaff(user)
+  const canDecide = useCan()
+  const today = todayISO()
   const [roomId, setRoomId] = useState('')
-  const [calendarDate, setCalendarDate] = useState(nextBookableDate())
-  const [rejecting, setRejecting] = useState(null)
+  const [view, setView] = useState('week')
+  const [anchor, setAnchor] = useState(today)
+  const [filters, setFilters] = useState({ grade: '', section: '', status: '', from: '', to: '' })
+  const [detail, setDetail] = useState(null)
   const [rejectNote, setRejectNote] = useState('')
+  const [rejecting, setRejecting] = useState(false)
   const [saving, setSaving] = useState(false)
-  const teacher = user.role === 'teacher'
-  const admin = user.role === 'admin'
-  const selected = rooms.some((room) => Number(room.id) === Number(roomId))
-    ? roomId
-    : rooms[0]?.id || ''
-  const selectedRoom = rooms.find((room) => Number(room.id) === Number(selected))
-  const week = schoolWeek(new Date())
-  const weeklyRequests = requests.filter((item) => item.date >= week[0] && item.date <= week[4])
-  const pendingRequests = useMemo(() => requests
-    .filter((item) => item.status === 'pending')
-    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
-    .slice(0, 3), [requests])
+  const [creatingDate, setCreatingDate] = useState(null)
 
-  const calendarRequests = useMemo(() => {
-    if (!selectedRoom) return []
-    const roomRequests = requests.filter(
-      (item) => Number(item.roomId) === Number(selectedRoom.id) || !item.roomId,
-    )
-    const slots = fixedSchedules.filter((item) => Number(item.roomId) === Number(selectedRoom.id))
-    const fixed = []
-    const anchor = new Date()
-    for (let offset = -21; offset <= 70; offset += 7) {
-      const week = schoolWeek(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + offset))
-      for (const date of week) {
+  const activeRoom = rooms.some((room) => String(room.id) === String(roomId)) ? String(roomId) : String(rooms[0]?.id || '')
+  const anchorDate = parseISODate(anchor)
+
+  const days = useMemo(() => {
+    if (view === 'day') return [anchor]
+    if (view === 'week') return schoolWeek(anchor)
+    const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1, 12)
+    const last = new Date(anchorDate.getFullYear(), anchorDate.getMonth() + 1, 0, 12)
+    const list = []
+    for (let d = first; d <= last; d = addDays(d, 1)) list.push(toISODate(d))
+    return list
+  }, [view, anchor, anchorDate])
+
+  const passes = (item) =>
+    (!filters.grade || item.grade === filters.grade) &&
+    (!filters.section || item.section === filters.section) &&
+    (!filters.status || item.status === filters.status) &&
+    (!filters.from || item.date >= filters.from) &&
+    (!filters.to || item.date <= filters.to)
+
+  // Requests in the visible period (all rooms) drive the stat cards.
+  const periodRequests = requests.filter((item) => item.date >= days[0] && item.date <= days.at(-1) && item.status !== 'cancelled' && passes(item))
+
+  const events = useMemo(() => {
+    const list = requests
+      .filter((item) => String(item.roomId) === activeRoom && item.status !== 'cancelled' && passes(item))
+      .map((item) => ({ ...item, kind: item.status }))
+    if (!filters.status) {
+      for (const date of days) {
         const weekday = parseISODate(date).getDay()
-        for (const slot of slots.filter((item) => Number(item.weekday) === weekday)) {
-          fixed.push({
-            id: `fijo-${slot.id}-${date}`,
-            teacherId: slot.teacherId,
-            roomId: slot.roomId,
-            date,
-            startTime: slot.startTime,
-            endTime: slot.endTime,
-            grade: slot.grade,
-            section: slot.section,
-            purpose: slot.purpose,
-            status: 'fixed',
-            students: 0,
-            notes: 'Horario fijo semanal',
-            adminNote: '',
-          })
+        for (const slot of fixedSchedules) {
+          if (String(slot.roomId) !== activeRoom || Number(slot.weekday) !== weekday) continue
+          if ((filters.grade && slot.grade !== filters.grade) || (filters.section && slot.section !== filters.section)) continue
+          list.push({ ...slot, id: `fijo-${slot.id}-${date}`, date, kind: 'fixed', teacherName: slot.teacherName })
         }
       }
     }
-    return [...roomRequests, ...fixed]
-  }, [selectedRoom, requests, fixedSchedules])
+    return list
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requests, fixedSchedules, activeRoom, days, filters])
 
-  const upcoming = useMemo(() => requests
-    .filter((item) =>
-      item.teacherId === user.id &&
-      (item.status === 'pending' || item.status === 'approved') &&
-      !isPastEnd(item.date, item.endTime),
-    )
-    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
-    .slice(0, 8), [requests, user.id])
-
-  async function approveRequest(request) {
-    const result = await decideRequest(request.id, 'approved')
-    if (!result.ok) {
-      toast(result.error || 'No se pudo aprobar la solicitud.', 'bad')
-      return
+  const marks = useMemo(() => {
+    const result = {}
+    const priority = { approved: 3, pending: 2, rejected: 1 }
+    for (const item of requests) {
+      if (String(item.roomId) !== activeRoom || !priority[item.status]) continue
+      if (!result[item.date] || priority[item.status] > priority[result[item.date]]) result[item.date] = item.status
     }
-    toast('Solicitud aprobada.')
+    return result
+  }, [requests, activeRoom])
+
+  function move(delta) {
+    if (view === 'day') {
+      let next = addDays(anchor, delta)
+      while (next.getDay() === 0 || next.getDay() === 6) next = addDays(next, delta)
+      setAnchor(toISODate(next))
+    } else if (view === 'week') setAnchor(toISODate(addDays(anchor, delta * 7)))
+    else setAnchor(toISODate(new Date(anchorDate.getFullYear(), anchorDate.getMonth() + delta, 1, 12)))
   }
 
-  async function rejectRequest() {
-    if (!rejecting) return
+  async function approve(item) {
     setSaving(true)
-    const result = await decideRequest(rejecting.id, 'rejected', rejectNote)
+    const result = await decideRequest(item.id, 'approved')
     setSaving(false)
-    if (!result.ok) {
-      toast(result.error || 'No se pudo rechazar la solicitud.', 'bad')
-      return
-    }
+    if (!result.ok) return toast(result.error || 'No se pudo aprobar la solicitud.', 'bad')
+    toast('Solicitud aprobada.')
+    setDetail(null)
+  }
+
+  async function reject() {
+    setSaving(true)
+    const result = await decideRequest(detail.id, 'rejected', rejectNote)
+    setSaving(false)
+    if (!result.ok) return toast(result.error || 'No se pudo rechazar la solicitud.', 'bad')
     toast('Solicitud rechazada.')
-    setRejecting(null)
-    setRejectNote('')
+    setDetail(null)
+    setRejecting(false)
+  }
+
+  function reserve(date) {
+    if (admin || date < today || parseISODate(date).getDay() % 6 === 0) return
+    setCreatingDate(date)
   }
 
   return (
     <div className="space-y-5">
       <PageHeader
-        eyebrow="Ocupación"
-        title={admin ? 'Calendario de reservas' : 'Calendario de salas'}
-        text={admin
-          ? 'Revisa la ocupación de las salas, gestiona solicitudes y accede rápidamente a las herramientas de coordinación.'
-          : 'Consulta la disponibilidad y solicita la sala de cómputo para tus clases o actividades.'}
-        action={
-          <div className="w-full sm:w-56">
-            <Choice
-              value={selected}
-              onChange={(value) => setRoomId(value)}
-              options={rooms.map((room) => ({ value: room.id, label: room.name }))}
-            />
-          </div>
-        }
+        icon={CalendarCheck}
+        title="Calendario de Reservas"
+        description={admin ? 'Visualiza y gestiona las reservas de las salas de cómputo.' : 'Consulta la disponibilidad y solicita la sala para tus clases.'}
+        actions={!admin && <Button type="button" onClick={() => setCreatingDate(today)}><Plus /> Nueva reserva</Button>}
       />
 
-      {admin && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryCard icon={CalendarDays} label="Solicitudes totales" value={weeklyRequests.length} hint="Esta semana" tone="blue" />
-          <SummaryCard icon={Clock3} label="Pendientes de aprobación" value={weeklyRequests.filter((item) => item.status === 'pending').length} hint="Requieren revisión" tone="amber" />
-          <SummaryCard icon={Check} label="Reservas confirmadas" value={weeklyRequests.filter((item) => item.status === 'approved').length} hint="Esta semana" tone="green" />
-          <SummaryCard icon={X} label="Solicitudes rechazadas" value={weeklyRequests.filter((item) => item.status === 'rejected').length} hint="Esta semana" tone="red" />
-        </div>
-      )}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard tone="blue" icon={CalendarDays} value={periodRequests.length} label="Total de reservas" hint={view === 'month' ? 'Este mes' : view === 'week' ? 'Esta semana' : 'Este día'} />
+        <StatCard tone="amber" icon={Clock} value={periodRequests.filter((item) => item.status === 'pending').length} label="Pendientes" onClick={() => setFilters({ ...filters, status: 'pending' })} />
+        <StatCard tone="green" icon={CheckCircle2} value={periodRequests.filter((item) => item.status === 'approved').length} label="Aprobadas" onClick={() => setFilters({ ...filters, status: 'approved' })} />
+        <StatCard tone="red" icon={XCircle} value={periodRequests.filter((item) => item.status === 'rejected').length} label="Rechazadas" onClick={() => setFilters({ ...filters, status: 'rejected' })} />
+      </div>
 
-      {admin ? (
-        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,0.9fr)]">
-          <div className="space-y-4">
-            {selectedRoom ? (
-              <>
-                <h2 className="px-1 text-sm font-bold text-foreground">{selectedRoom.name}</h2>
-                <WeekBoard
-                  requests={calendarRequests}
-                  users={users}
-                  initialDate={calendarDate}
-                  onReserve={setCalendarDate}
-                />
-              </>
-            ) : (
-              <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                No hay salas de cómputo registradas. Crea una en “Categorías y ambientes”.
-              </p>
-            )}
-            <CalendarLegend />
-          </div>
-          <aside className="space-y-4">
-            <Card className="border-amber-500/20 shadow-xs">
-              <CardHeader className="flex flex-row items-center justify-between gap-2 border-b border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-bold">
-                  <Clock3 className="size-4 text-amber-600" />
-                  Solicitudes pendientes ({requests.filter((item) => item.status === 'pending').length})
-                </CardTitle>
-                <Button asChild variant="outline" size="sm" className="h-7 px-2 text-xs">
-                  <Link to="/admin/solicitudes">Ver todas</Link>
-                </Button>
-              </CardHeader>
-              <CardContent className="space-y-3 p-3">
-                {pendingRequests.length ? pendingRequests.map((item) => (
-                  <article key={item.id} className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-                    <div className="mb-2 flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold text-foreground">{personName(users, item.teacherId)}</p>
-                        <p className="truncate text-xs text-muted-foreground">{users.find((person) => person.id === item.teacherId)?.subject || 'Docente'}</p>
-                      </div>
-                      <StatusBadge status="pending" />
-                    </div>
-                    <div className="space-y-1 text-xs text-muted-foreground">
-                      <p className="flex items-center gap-1.5"><CalendarDays className="size-3.5" />{new Intl.DateTimeFormat('es-PE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }).format(parseISODate(item.date))}</p>
-                      <p className="flex items-center gap-1.5"><Clock3 className="size-3.5" />{item.startTime}–{item.endTime} · {item.students} estudiantes</p>
-                    </div>
-                    <p className="mt-2 line-clamp-2 rounded bg-amber-500/10 px-2 py-1 text-xs font-medium text-amber-900 dark:text-amber-200">{item.purpose}</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <Button type="button" size="sm" className="h-8 gap-1 bg-emerald-600 text-xs text-white hover:bg-emerald-700" onClick={() => approveRequest(item)}>
-                        <Check className="size-3.5" /> Aprobar
-                      </Button>
-                      <Button type="button" size="sm" variant="destructive" className="h-8 gap-1 text-xs" onClick={() => { setRejecting(item); setRejectNote('') }}>
-                        <X className="size-3.5" /> Rechazar
-                      </Button>
-                    </div>
-                  </article>
-                )) : (
-                  <p className="py-6 text-center text-sm text-muted-foreground">No hay solicitudes pendientes.</p>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card className="border-border/80 shadow-xs">
-              <CardHeader className="border-b border-border/70 bg-sky-500/5 px-4 py-3">
-                <CardTitle className="flex items-center gap-2 text-sm font-bold text-sky-700 dark:text-sky-300">
-                  <Settings2 className="size-4" />
-                  Acciones rápidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-1">
-                <QuickAction to="/admin/mantenimiento" icon={Wrench} tone="border-sky-500/20 bg-sky-500/5 text-sky-700 hover:bg-sky-500/10 dark:text-sky-300">
-                  Registrar mantenimiento
-                </QuickAction>
-                <QuickAction to="/admin/horarios" icon={Settings2} tone="border-slate-500/20 bg-muted/40 text-foreground hover:bg-muted">
-                  Configurar horarios fijos
-                </QuickAction>
-                <QuickAction to="/admin/solicitudes" icon={LockKeyhole} tone="border-rose-500/20 bg-rose-500/5 text-rose-700 hover:bg-rose-500/10 dark:text-rose-300">
-                  Gestionar solicitudes
-                </QuickAction>
-                <QuickAction to="/admin/reportes" icon={FileBarChart} tone="border-emerald-500/20 bg-emerald-500/5 text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300">
-                  Ver reportes
-                </QuickAction>
-              </CardContent>
-            </Card>
-          </aside>
+      <div className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-3 xl:grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,2fr)]">
+        <FilterLabel label="Ambiente"><Select value={activeRoom} onChange={setRoomId} options={rooms.map((room) => ({ value: String(room.id), label: room.name }))} /></FilterLabel>
+        <FilterLabel label="Grado"><Select value={filters.grade} onChange={(grade) => setFilters({ ...filters, grade })} options={[allOption(), ...GRADES.map((value) => ({ value, label: value }))]} /></FilterLabel>
+        <FilterLabel label="Sección"><Select value={filters.section} onChange={(section) => setFilters({ ...filters, section })} options={[allOption(), ...SECTIONS.map((value) => ({ value, label: value }))]} /></FilterLabel>
+        <FilterLabel label="Estado"><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={[allOption(), ...['pending', 'approved', 'rejected'].map((value) => ({ value, label: STATUS[value] }))]} /></FilterLabel>
+        <div className="flex items-end">
+          <Button type="button" variant="outline" className="w-full" onClick={() => setFilters({ grade: '', section: '', status: '', from: '', to: '' })}>Limpiar</Button>
         </div>
-      ) : (
-        <>
-          <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-            <div className="space-y-4">
-              {selectedRoom ? (
-                <>
-                  <h2 className="px-1 text-sm font-bold text-foreground">{selectedRoom.name}</h2>
-                  <WeekBoard
-                    requests={calendarRequests}
-                    users={users}
-                    canReserve={teacher}
-                    initialDate={calendarDate}
-                    onReserve={setCalendarDate}
-                  />
-                </>
-              ) : (
-                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-                  No hay salas de cómputo registradas. Solicita a administración que cree una en “Categorías y ambientes”.
-                </p>
-              )}
+        <FilterLabel label="Rango de fechas">
+          <span className="flex items-center gap-1.5">
+            <Input type="date" value={filters.from} onChange={(event) => setFilters({ ...filters, from: event.target.value })} aria-label="Desde" />
+            <span className="text-muted-foreground">–</span>
+            <Input type="date" value={filters.to} onChange={(event) => setFilters({ ...filters, to: event.target.value })} aria-label="Hasta" />
+          </span>
+        </FilterLabel>
+      </div>
+
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <div className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {rooms.map((room) => (
+                <button key={room.id} type="button" onClick={() => setRoomId(String(room.id))}
+                  className={cn('flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold', String(room.id) === activeRoom ? 'border-primary bg-primary text-primary-foreground shadow' : 'border-border bg-card text-foreground hover:bg-muted')}>
+                  <Laptop className="size-4" /> {room.name}
+                </button>
+              ))}
+              {!rooms.length && <p className="text-sm text-muted-foreground">No hay salas de cómputo registradas. Créalas en “Categorías y ambientes”.</p>}
             </div>
-            {teacher && (
-              <NewRequest
-                inline
-                calendarMode
-                initialDate={calendarDate}
-                initialRoomId={selected}
-                onDateChange={setCalendarDate}
-                onRoomChange={(value) => setRoomId(String(value))}
-              />
-            )}
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg border border-border bg-card p-0.5">
+                {[['day', 'Día'], ['week', 'Semana'], ['month', 'Mes']].map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setView(id)} className={cn('rounded-md px-3 py-1 text-sm font-semibold', view === id ? 'bg-primary text-primary-foreground' : 'text-foreground hover:bg-muted')}>{label}</button>
+                ))}
+              </div>
+              <button type="button" onClick={() => move(-1)} className="flex size-8 items-center justify-center rounded-md border border-border bg-card hover:bg-muted" aria-label="Anterior"><ChevronLeft className="size-4" /></button>
+              <span className="min-w-40 text-center text-sm font-semibold">{view === 'month' ? new Intl.DateTimeFormat('es-PE', { month: 'long', year: 'numeric' }).format(anchorDate) : rangeLabel(days)}</span>
+              <button type="button" onClick={() => move(1)} className="flex size-8 items-center justify-center rounded-md border border-border bg-card hover:bg-muted" aria-label="Siguiente"><ChevronRight className="size-4" /></button>
+            </div>
           </div>
 
-          <CalendarLegend />
-        </>
-      )}
+          {view === 'month' ? (
+            <MonthBoard days={days} events={events} today={today} onPick={(date) => { setAnchor(date); setView('day') }} />
+          ) : (
+            <TimeGrid days={days} events={events} users={users} today={today} onOpen={setDetail} onReserve={admin ? null : reserve} />
+          )}
+        </div>
 
-      {teacher && (
-        <Card className="border-border/80 shadow-xs">
-          <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/70 bg-muted/30 px-4 py-3">
-            <CardTitle className="flex items-center gap-2 text-sm font-bold">
-              <CalendarDays className="size-4 text-primary" />
-              Mis próximas reservas
-            </CardTitle>
-            <Button asChild variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
-              <Link to="/panel/solicitudes">Ver todas</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-4">
-            <Table
-              rows={upcoming}
-              empty="Todavía no tienes reservas próximas."
-              columns={[
-                {
-                  key: 'date',
-                  label: 'Fecha',
-                  render: (item) => new Intl.DateTimeFormat('es-PE', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(parseISODate(item.date)),
-                },
-                { key: 'time', label: 'Horario', render: (item) => `${item.startTime}–${item.endTime}` },
-                {
-                  key: 'room',
-                  label: 'Sala',
-                  render: (item) => item.roomName || rooms.find((room) => Number(room.id) === Number(item.roomId))?.name || 'Sala de cómputo',
-                },
-                { key: 'grade', label: 'Grado / Sección', render: (item) => `${item.grade} ${item.section}` },
-                { key: 'purpose', label: 'Propósito', render: (item) => item.purpose },
-                { key: 'status', label: 'Estado', render: (item) => <StatusBadge status={item.status} /> },
-                {
-                  key: 'actions',
-                  label: 'Acciones',
-                  render: () => (
-                    <Button asChild type="button" variant="outline" size="icon-sm" aria-label="Ver mis reservas">
-                      <Link to="/panel/solicitudes"><Eye className="size-4" /></Link>
-                    </Button>
-                  ),
-                },
-              ]}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      <Dialog open={Boolean(rejecting)} onOpenChange={(open) => { if (!open) setRejecting(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Rechazar solicitud</DialogTitle>
-            <DialogDescription>
-              {rejecting && `${personName(users, rejecting.teacherId)} · ${rejecting.date} · ${rejecting.startTime}–${rejecting.endTime}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <label htmlFor="calendar-reject-note" className="text-xs font-semibold">Motivo del rechazo (opcional)</label>
-            <Textarea id="calendar-reject-note" value={rejectNote} onChange={(event) => setRejectNote(event.target.value)} placeholder="Indica el motivo para el docente." />
+        <aside className="space-y-4">
+          <div className="rounded-xl border border-border bg-card p-3 shadow-sm">
+            <MonthCalendar compact year={anchorDate.getFullYear()} month={anchorDate.getMonth()} onMonth={(year, month) => setAnchor(toISODate(new Date(year, month, 1, 12)))} selected={anchor} today={today} marks={marks} onSelect={(date) => { setAnchor(date); if (view === 'month') setView('day') }} />
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setRejecting(null)}>Cancelar</Button>
-            <Button type="button" variant="destructive" disabled={saving} onClick={rejectRequest}>
-              {saving ? 'Guardando…' : 'Confirmar rechazo'}
-            </Button>
-          </DialogFooter>
+          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
+            <p className="mb-3 text-sm font-bold">Leyenda</p>
+            <CalendarLegend items={[['approved', 'Reserva aprobada'], ['pending', 'Reserva pendiente'], ['rejected', 'Reserva rechazada'], ['free', 'Horario libre'], ['fixed', 'Horario fijo (curricular)']]} />
+            {!admin && <p className="mt-3 text-xs text-muted-foreground">Haz clic en un espacio libre de un día para solicitar la sala.</p>}
+          </div>
+        </aside>
+      </div>
+
+      {creatingDate && <NewRequestDialog initialDate={creatingDate} onClose={() => setCreatingDate(null)} onComplete={() => setCreatingDate(null)} />}
+
+      <Dialog open={Boolean(detail)} onOpenChange={(open) => { if (!open) { setDetail(null); setRejecting(false) } }}>
+        <DialogContent className="sm:max-w-md">
+          {detail && (
+            <>
+              <DialogHeader>
+                <DialogTitle>{detail.kind === 'fixed' ? 'Horario fijo' : `${requestCode(detail.id)} · ${detail.grade} ${detail.section}`}</DialogTitle>
+                <DialogDescription>{longDate(detail.date)} · {detail.startTime}–{detail.endTime}</DialogDescription>
+              </DialogHeader>
+              <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+                <dt className="text-muted-foreground">Docente</dt><dd>{detail.kind === 'fixed' ? detail.teacherName || personName(users, detail.teacherId) : personName(users, detail.teacherId)}</dd>
+                <dt className="text-muted-foreground">Actividad</dt><dd>{detail.purpose || '—'}</dd>
+                {detail.kind !== 'fixed' && <><dt className="text-muted-foreground">Estudiantes</dt><dd>{detail.students}</dd></>}
+                <dt className="text-muted-foreground">Estado</dt><dd>{detail.kind === 'fixed' ? 'Horario fijo semanal' : <StatusChip status={detail.status} meta={REQUEST_META} />}</dd>
+                {detail.notes && <><dt className="text-muted-foreground">Notas</dt><dd>{detail.notes}</dd></>}
+                {detail.adminNote && <><dt className="text-muted-foreground">Nota CIST</dt><dd>{detail.adminNote}</dd></>}
+              </dl>
+              {canDecide && detail.kind === 'pending' && (
+                rejecting ? (
+                  <div className="space-y-2">
+                    <Textarea value={rejectNote} onChange={(event) => setRejectNote(event.target.value)} placeholder="Motivo del rechazo (opcional)" />
+                    <DialogFooter>
+                      <Button type="button" variant="outline" onClick={() => setRejecting(false)}>Volver</Button>
+                      <Button type="button" variant="destructive" disabled={saving} onClick={reject}>Confirmar rechazo</Button>
+                    </DialogFooter>
+                  </div>
+                ) : (
+                  <DialogFooter>
+                    <Button type="button" variant="outline" className="border-border text-[#b4413c]" onClick={() => { setRejectNote(''); setRejecting(true) }}><X /> Rechazar</Button>
+                    <Button type="button" disabled={saving || isPastEnd(detail.date, detail.endTime)} onClick={() => approve(detail)}><Check /> Aprobar</Button>
+                  </DialogFooter>
+                )
+              )}
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>
   )
 }
+
+function TimeGrid({ days, events, users, today, onOpen, onReserve }) {
+  const height = ((DAY_END - DAY_START) / 60) * HOUR_HEIGHT
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+      <div className="min-w-[640px]" style={{ display: 'grid', gridTemplateColumns: `90px repeat(${days.length}, minmax(0, 1fr))` }}>
+        <div className="border-b border-r border-border bg-slate-50 px-2 py-2 text-center text-sm font-bold dark:bg-muted/60">Hora</div>
+        {days.map((date) => {
+          const label = dayHeader(date)
+          return (
+            <div key={date} className={cn('border-b border-r border-border px-2 py-1.5 text-center last:border-r-0', date === today ? 'bg-slate-100 dark:bg-blue-500/20' : 'bg-slate-50 dark:bg-muted/60')}>
+              <p className="text-sm font-bold">{label.weekday}</p>
+              <p className="text-xs text-muted-foreground">{label.day}</p>
+            </div>
+          )
+        })}
+        <div className="relative border-r border-border" style={{ height }}>
+          {HOURS.map((mins, index) => (
+            <div key={mins} className="absolute inset-x-0 border-b border-border/70 px-2 pt-1 text-[11px] font-medium text-muted-foreground" style={{ top: index * HOUR_HEIGHT, height: HOUR_HEIGHT }}>
+              {fmt(mins)} – {fmt(Math.min(mins + 60, DAY_END))}
+            </div>
+          ))}
+        </div>
+        {days.map((date) => (
+          <div
+            key={date}
+            className={cn('relative border-r border-border last:border-r-0', onReserve && date >= today && 'cursor-pointer hover:bg-muted/50 dark:hover:bg-blue-500/5')}
+            style={{ height }}
+            onClick={() => onReserve?.(date)}
+          >
+            {HOURS.map((mins, index) => <div key={mins} className="absolute inset-x-0 border-b border-border/60" style={{ top: index * HOUR_HEIGHT, height: HOUR_HEIGHT }} />)}
+            {events.filter((item) => item.date === date).map((item) => {
+              const top = ((toMinutes(item.startTime) - DAY_START) / 60) * HOUR_HEIGHT
+              const blockHeight = Math.max(26, ((toMinutes(item.endTime) - toMinutes(item.startTime)) / 60) * HOUR_HEIGHT - 4)
+              const Icon = BLOCK_ICON[item.kind]
+              const teacher = item.kind === 'fixed' ? item.teacherName || personName(users, item.teacherId) : personName(users, item.teacherId)
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={(event) => { event.stopPropagation(); onOpen(item) }}
+                  className={cn('absolute inset-x-1 overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight shadow-xs transition hover:z-10 hover:shadow-md', BLOCK[item.kind])}
+                  style={{ top: top + 2, height: blockHeight }}
+                  title={`${item.grade} ${item.section} – ${item.purpose} · ${teacher}`}
+                >
+                  <span className="flex items-center gap-1 font-bold"><Icon className={cn('size-3.5 shrink-0', ICON_TONE[item.kind])} /><span className="truncate">{item.grade} {item.section} – {item.purpose}</span></span>
+                  <span className="block truncate">Prof. {teacher}</span>
+                  <span className="block">{item.startTime} – {item.endTime}</span>
+                </button>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function MonthBoard({ days, events, today, onPick }) {
+  const first = parseISODate(days[0])
+  const offset = (first.getDay() + 6) % 7
+  const cells = [...Array(offset).fill(null), ...days]
+  return (
+    <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+      <div className="grid grid-cols-7 bg-slate-50 text-center text-xs font-bold dark:bg-muted/60">
+        {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map((day) => <span key={day} className="py-2">{day}</span>)}
+      </div>
+      <div className="grid grid-cols-7">
+        {cells.map((date, index) => {
+          if (!date) return <div key={`empty-${index}`} className="min-h-24 border-r border-t border-border bg-muted/20" />
+          const dayEvents = events.filter((item) => item.date === date)
+          return (
+            <button key={date} type="button" onClick={() => onPick(date)} className={cn('min-h-24 border-r border-t border-border p-1.5 text-left align-top hover:bg-muted/40', date === today && 'bg-slate-50 dark:bg-blue-500/10')}>
+              <span className="text-xs font-bold">{Number(date.slice(8))}</span>
+              <span className="mt-1 block space-y-0.5">
+                {dayEvents.slice(0, 3).map((item) => (
+                  <span key={item.id} className={cn('block truncate rounded border px-1 text-[10px] font-semibold', BLOCK[item.kind])}>{item.startTime} {item.grade}{item.section}</span>
+                ))}
+                {dayEvents.length > 3 && <span className="block text-[10px] text-muted-foreground">+{dayEvents.length - 3} más</span>}
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+

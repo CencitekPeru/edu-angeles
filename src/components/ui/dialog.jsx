@@ -28,7 +28,7 @@ function DialogOverlay({ className, ...props }) {
   )
 }
 
-function DialogContent({ className, children, ...props }) {
+function DialogContent({ className, children, showCloseButton = true, ...props }) {
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -41,10 +41,12 @@ function DialogContent({ className, children, ...props }) {
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
-          <X className="size-4" />
-          <span className="sr-only">Cerrar</span>
-        </DialogPrimitive.Close>
+        {showCloseButton && (
+          <DialogPrimitive.Close className="absolute top-4 right-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring">
+            <X className="size-4" />
+            <span className="sr-only">Cerrar</span>
+          </DialogPrimitive.Close>
+        )}
       </DialogPrimitive.Content>
     </DialogPortal>
   )

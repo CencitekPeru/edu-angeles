@@ -1,29 +1,24 @@
-import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
 import { Avatar } from '@/components/ui/avatar'
 import { STATUS } from '../lib/reservations'
 import { cn } from '@/lib/utils'
+import { CHIP_BASE, TONE } from '../lib/tones'
 
 export { Avatar }
 
 export function StatusBadge({ status, className }) {
-  const map = {
-    pending: { variant: 'warning', dot: 'bg-amber-500' },
-    approved: { variant: 'success', dot: 'bg-emerald-500' },
-    rejected: { variant: 'destructive', dot: 'bg-rose-500' },
-    cancelled: { variant: 'secondary', dot: 'bg-slate-400' },
-    fixed: { variant: 'info', dot: 'bg-sky-500' },
-  }
-  const config = map[status] || { variant: 'outline', dot: 'bg-slate-400' }
+  const map = { pending: 'warn', approved: 'ok', rejected: 'bad', cancelled: 'neutral', fixed: 'brand' }
+  const tone = TONE[map[status]] || TONE.plain
+  const Icon = tone.icon
   const label = STATUS[status] || (status === 'fixed' ? 'Horario fijo' : status)
 
   return (
-    <Badge variant={config.variant} className={cn('gap-1.5 px-2.5 py-1 text-xs font-semibold shadow-2xs', className)}>
-      <span className={cn('size-1.5 rounded-full shrink-0', config.dot)} />
+    <span className={cn(CHIP_BASE, tone.chip, className)}>
+      <Icon aria-hidden="true" />
       {label}
-    </Badge>
+    </span>
   )
 }
 

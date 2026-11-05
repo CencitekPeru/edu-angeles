@@ -1,7 +1,7 @@
 import { useId, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Table as ShadcnTable,
@@ -12,62 +12,121 @@ import {
   TableCell,
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
+import { CHIP_BASE, TONE } from '../../lib/tones'
 
-export function Panel({ title, action, children, className = '' }) {
+export function Panel({ title, icon: Icon, action, children, className = '', contentClassName = '', plain = false }) {
   return (
-    <Card className={cn('overflow-hidden border-border/80 shadow-xs', className)}>
-      <CardHeader className="flex flex-row items-center justify-between gap-3 border-b border-border/60 bg-muted/30 px-5 py-3.5 space-y-0">
-        <CardTitle className="text-sm font-bold text-foreground tracking-tight">{title}</CardTitle>
+    <Card className={cn('gap-0 overflow-hidden border-border py-0 shadow-xs', className)}>
+      <CardHeader className={cn('flex flex-row items-center justify-between gap-3 space-y-0 px-5 py-3', plain ? 'bg-card pb-1 pt-4' : 'border-b border-border bg-slate-50 dark:bg-muted/60')}>
+        <CardTitle className="flex items-center gap-2.5 text-[15px] font-bold tracking-tight text-foreground">
+          {Icon && <Icon className="size-[18px] text-primary" />}
+          {title}
+        </CardTitle>
         {action && <div className="shrink-0">{action}</div>}
       </CardHeader>
-      <CardContent className="p-5">{children}</CardContent>
+      <CardContent className={cn(plain ? 'px-5 pb-5 pt-3' : 'p-5', contentClassName)}>{children}</CardContent>
     </Card>
   )
 }
 
-export function Pill({ value, className, solid = false }) {
+export function PageHeader({ icon: Icon, title, description, actions }) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-center gap-4">
+        {Icon && (
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl border border-border bg-card text-primary shadow-xs">
+            <Icon className="size-6" strokeWidth={1.8} />
+          </span>
+        )}
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-foreground">{title}</h1>
+          {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+        </div>
+      </div>
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    </div>
+  )
+}
+
+/* Formal palette: every card is white with a navy icon; the tone only marks a small status dot. */
+const TONE_DOT = {
+  blue: 'bg-primary',
+  violet: 'bg-primary',
+  green: 'bg-[#3f7d5c]',
+  amber: 'bg-[#b7832f]',
+  red: 'bg-[#b4413c]',
+}
+
+export function StatCard({ icon: Icon, label, value, hint, tone = 'blue', to, onClick }) {
+  const body = (
+    <div className={cn('flex h-full items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-xs transition', (to || onClick) && 'hover:border-primary/40 hover:shadow-sm')}>
+      {Icon && (
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-primary dark:bg-muted">
+          <Icon className="size-6" strokeWidth={1.8} />
+        </span>
+      )}
+      <div className="min-w-0">
+        <p className="text-[26px] font-extrabold leading-none tracking-tight text-foreground">{value}</p>
+        <p className="mt-1 truncate text-sm font-medium text-muted-foreground">{label}</p>
+        {hint && (
+          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span className={cn('size-1.5 rounded-full', TONE_DOT[tone] || TONE_DOT.blue)} />
+            {hint}
+          </p>
+        )}
+      </div>
+    </div>
+  )
+  if (to) return <Link to={to} className="block">{body}</Link>
+  if (onClick) return <button type="button" onClick={onClick} className="block w-full text-left">{body}</button>
+  return body
+}
+
+/** Status pill used in every table: same shape, icon and muted tone across the panel. */
+export function Pill({ value, className }) {
   const tones = {
-    Operativo: 'success',
-    Bueno: 'success',
-    Realizado: 'success',
-    resuelta: 'success',
-    Programado: 'info',
-    registrada: 'secondary',
-    'En proceso': 'warning',
-    en_proceso: 'warning',
-    Regular: 'warning',
-    'Con fallas': 'warning',
-    media: 'warning',
-    Pendiente: 'destructive',
-    pendiente: 'destructive',
-    alta: 'destructive',
-    Malo: 'destructive',
-    Inoperativo: 'destructive',
-    baja: 'info',
+    Operativo: 'ok',
+    Bueno: 'ok',
+    Realizado: 'ok',
+    resuelta: 'ok',
+    Activo: 'ok',
+    Programado: 'brand',
+    baja: 'brand',
+    registrada: 'neutral',
+    'En proceso': 'warn',
+    en_proceso: 'warn',
+    Regular: 'warn',
+    'Con fallas': 'warn',
+    media: 'warn',
+    Pendiente: 'bad',
+    pendiente: 'bad',
+    alta: 'bad',
+    Malo: 'bad',
+    Inoperativo: 'bad',
+    Inactivo: 'neutral',
+    Habilitado: 'ok',
+    'Coordinación': 'brand',
+    'Coordinación CIST': 'brand',
+    Directora: 'brand',
+    Auxiliar: 'plain',
+    Docente: 'plain',
   }
   const labels = {
     registrada: 'Registrada',
     pendiente: 'Pendiente',
-    en_proceso: 'En proceso',
+    en_proceso: 'En atención',
     resuelta: 'Resuelta',
     alta: 'Alta',
     media: 'Media',
     baja: 'Baja',
   }
-  const variant = tones[value] || 'secondary'
-  const display = labels[value] || value
-  const solidTones = {
-    success: 'border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600 dark:text-white',
-    warning: 'border-amber-700 bg-amber-600 text-white dark:border-amber-500 dark:bg-amber-600 dark:text-white',
-    destructive: 'border-rose-700 bg-rose-600 text-white dark:border-rose-500 dark:bg-rose-600 dark:text-white',
-    info: 'border-sky-700 bg-sky-600 text-white dark:border-sky-500 dark:bg-sky-600 dark:text-white',
-    secondary: 'border-slate-700 bg-slate-600 text-white dark:border-slate-500 dark:bg-slate-600 dark:text-white',
-  }
-
+  const tone = TONE[tones[value]] || TONE.neutral
+  const Icon = tone.icon
   return (
-    <Badge variant={variant} className={`text-xs font-semibold px-2.5 py-0.5 ${solid ? solidTones[variant] : ''} ${className || ''}`}>
-      {display}
-    </Badge>
+    <span className={cn(CHIP_BASE, tone.chip, className)}>
+      <Icon aria-hidden="true" />
+      {labels[value] || value}
+    </span>
   )
 }
 
@@ -80,7 +139,8 @@ export function Filters({ children, className = '' }) {
 }
 
 export function Table({ columns, rows, empty = 'No hay registros.' }) {
-  return <PaginatedTable key={rows.length} columns={columns} rows={rows} empty={empty} />
+  // Columns marked `hidden` (e.g. actions for read-only roles) are not rendered at all.
+  return <PaginatedTable key={rows.length} columns={columns.filter((column) => !column.hidden)} rows={rows} empty={empty} />
 }
 
 function PaginatedTable({ columns, rows, empty }) {
@@ -96,10 +156,10 @@ function PaginatedTable({ columns, rows, empty }) {
     <div className="overflow-hidden rounded-lg border border-border/70">
       <div className="overflow-x-auto">
         <ShadcnTable>
-          <TableHeader className="bg-muted/40">
+          <TableHeader className="bg-slate-50 dark:bg-muted/40">
             <TableRow className="hover:bg-transparent border-b border-border/70">
               {columns.map((column) => (
-                <TableHead key={column.key} className="px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                <TableHead key={column.key} className="px-4 py-3 text-xs font-bold text-foreground/75 whitespace-nowrap">
                   {column.label}
                 </TableHead>
               ))}

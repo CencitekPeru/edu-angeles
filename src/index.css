@@ -1,6 +1,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Dark mode follows the app's theme toggle (.dark on <html>), not the operating system preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --color-ink: #17261f;
@@ -41,24 +44,25 @@
 
 :root {
   --radius: 0.6rem;
-  --background: #ffffff;
+  --background: #f4f6f9;
   --foreground: #0f172a;
   --card: #ffffff;
   --card-foreground: #0f172a;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
-  --primary: #111111;
+  --primary: #1e3a8a;
   --primary-foreground: #ffffff;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #111111;
-  --muted: #f4f4f5;
-  --muted-foreground: #525252;
-  --accent: #f4f4f5;
-  --accent-foreground: #111111;
-  --destructive: #be123c;
-  --border: #e5e5e5;
-  --input: #e5e5e5;
-  --ring: #111111;
+  --secondary: #f1f3f6;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f3f6;
+  --muted-foreground: #5f6b7a;
+  --accent: #eef1f6;
+  --accent-foreground: #1e3a8a;
+  --destructive: #b42318;
+  --border: #e2e6ec;
+  --input: #cfd8e5;
+  --ring: #1e3a8a;
+  --sidebar: #0b1730;
 }
 
 .dark {
@@ -68,8 +72,8 @@
   --card-foreground: #fafafa;
   --popover: #141414;
   --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #111111;
+  --primary: #5b7fd6;
+  --primary-foreground: #ffffff;
   --secondary: #1c1c1c;
   --secondary-foreground: #fafafa;
   --muted: #1c1c1c;
@@ -78,7 +82,8 @@
   --accent-foreground: #fafafa;
   --border: #2e2e2e;
   --input: #2e2e2e;
-  --ring: #fafafa;
+  --ring: #5b7fd6;
+  --sidebar: #070f20;
   --color-sand: #0a0a0a;
   --color-ink: #fafafa;
   --color-line: #2e2e2e;
@@ -141,7 +146,7 @@ button:not(:disabled) {
 }
 
 ::selection {
-  background: #cfe6d8;
+  background: #cfe0fb;
 }
 
 @keyframes toast-in {

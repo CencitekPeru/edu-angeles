@@ -11,14 +11,14 @@ const badgeVariants = cva(
         default: "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90",
         secondary: "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90",
         destructive:
-          "border-destructive/20 bg-destructive/15 text-destructive dark:border-destructive/30 dark:bg-destructive/25 dark:text-red-300 [a&]:hover:bg-destructive/25",
+          "border-[#e8c4c1] bg-[#fbf1f0] text-[#9a2f2a] dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300 [a&]:hover:bg-[#f7e4e2]",
         outline: "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         success:
-          "border-emerald-500/20 bg-emerald-500/15 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/20 dark:text-emerald-300",
+          "border-[#c9dccf] bg-[#f1f7f3] text-[#2f6447] dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300",
         warning:
-          "border-amber-500/20 bg-amber-500/15 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/20 dark:text-amber-300",
+          "border-[#ead9b8] bg-[#fbf6ec] text-[#8a5a12] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300",
         info:
-          "border-sky-500/20 bg-sky-500/15 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/20 dark:text-sky-300",
+          "border-[#cfd8ea] bg-[#f2f5fb] text-[#1e3a8a] dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300",
         ghost: "[a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         link: "text-primary underline-offset-4 [a&]:hover:underline",
       },

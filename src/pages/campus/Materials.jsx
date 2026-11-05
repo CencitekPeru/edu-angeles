@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Boxes, ClipboardList, MapPin, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
+import { useCan } from '../../lib/permissions'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -9,27 +10,32 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Field, Choice } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Panel, Table } from './kit'
+import { PageHeader, Panel, Pill, Table } from './kit'
+import { InventoryTabs } from './Inventory'
+import { Select } from '../attendance/shared'
 
 const emptyMaterial = {
+  level: '',
   name: '',
   codMinedu: '',
   category: '',
-  quantity: '0',
+  type: '',
+  color: '',
+  dimensions: '',
+  quantity: '1',
   unit: 'unidad',
   place: '',
   state: 'Bueno',
+  operationalState: 'Operativo',
+  registeredOn: new Date().toISOString().slice(0, 10),
   notes: '',
 }
-
-const stateVariants = {
-  Bueno: 'success',
-  Regular: 'warning',
-  Malo: 'destructive',
-}
+const FURNITURE_TYPES = ['Silla', 'Carpeta', 'Mesa', 'Escritorio', 'Pizarra', 'Estante', 'Armario', 'Archivador', 'Banca', 'Módulo', 'Otro']
+const COLORS = ['Caoba', 'Marrón', 'Natural', 'Negro', 'Blanco', 'Gris', 'Azul', 'Verde']
 
 export default function MaterialsPage() {
   const { toast } = useApp()
+  const canEdit = useCan()
   const toastRef = useRef(toast)
   const [materials, setMaterials] = useState([])
   const [categories, setCategories] = useState([])
@@ -107,13 +113,20 @@ export default function MaterialsPage() {
   function openEdit(item) {
     setEditingId(item.id)
     setForm({
+      ...emptyMaterial,
+      level: item.level || '',
       name: item.name,
       codMinedu: item.codMinedu || '',
       category: item.category,
+      type: item.type || '',
+      color: item.color || '',
+      dimensions: item.dimensions || '',
       quantity: String(item.quantity),
       unit: item.unit,
       place: item.place,
       state: item.state,
+      operationalState: item.operationalState || 'Operativo',
+      registeredOn: item.registeredOn || emptyMaterial.registeredOn,
       notes: item.notes,
     })
     setDialogOpen(true)
@@ -129,6 +142,14 @@ export default function MaterialsPage() {
 
   async function save(event) {
     event.preventDefault()
+    if (!form.level) {
+      toast('Selecciona el nivel (Primaria, Secundaria o Ambos).', 'bad')
+      return
+    }
+    if (!form.place) {
+      toast('Selecciona la ubicación del bien.', 'bad')
+      return
+    }
     if (!categories.some((category) => category.name === form.category)) {
       toast('Selecciona una categoría registrada en la vista Categorías.', 'bad')
       return
@@ -161,14 +182,13 @@ export default function MaterialsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-        <div>
-          <p className="text-sm text-muted-foreground">Administración <span className="mx-1">›</span> Materiales</p>
-          <h1 className="mt-1 text-2xl font-extrabold tracking-tight">Inventario de materiales</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Controla mobiliario, materiales didácticos y otros recursos del colegio.</p>
-        </div>
-        <Button type="button" onClick={openNew}><Plus aria-hidden="true" /> Agregar material</Button>
-      </div>
+      <PageHeader
+        icon={Boxes}
+        title="Inventario"
+        description="Control de bienes tecnológicos y mobiliarios de la institución."
+        actions={canEdit && <Button type="button" onClick={openNew}><Plus aria-hidden="true" /> Registrar bien mobiliario</Button>}
+      />
+      <InventoryTabs />
 
       <div className="grid gap-3 sm:grid-cols-3">
         <SummaryCard label="Tipos de material" value={summary.types} />
@@ -177,7 +197,7 @@ export default function MaterialsPage() {
       </div>
 
       <Panel
-        title="Materiales registrados"
+        title="Bienes mobiliarios registrados"
         action={<Badge variant="outline">{filteredMaterials.length} {filteredMaterials.length === 1 ? 'registro' : 'registros'}</Badge>}
       >
         <div className="mb-4 max-w-md">
@@ -196,24 +216,20 @@ export default function MaterialsPage() {
           rows={filteredMaterials}
           empty={loading ? 'Cargando inventario…' : query ? 'No hay materiales que coincidan con la búsqueda.' : 'Aún no hay materiales registrados. Agrega sillas, pizarras u otros recursos.'}
           columns={[
-            { key: 'name', label: 'Material' },
-            { key: 'codMinedu', label: 'COD MINEDU', render: (item) => item.codMinedu || <span className="text-muted-foreground">—</span> },
+            { key: 'codMinedu', label: 'Código patrimonial', render: (item) => item.codMinedu ? <span className="font-semibold">{item.codMinedu}</span> : <span className="text-muted-foreground">—</span> },
+            { key: 'name', label: 'Denominación', render: (item) => (
+              <span>
+                <span className="block font-medium">{item.name}</span>
+                <span className="text-xs text-muted-foreground">{[item.type, item.color, item.dimensions].filter(Boolean).join(' · ') || item.category}</span>
+              </span>
+            ) },
+            { key: 'level', label: 'Nivel', render: (item) => item.level || '—' },
             { key: 'category', label: 'Categoría' },
             { key: 'quantity', label: 'Existencias', render: (item) => <span className="font-semibold">{item.quantity} {item.unit}</span> },
             { key: 'place', label: 'Ubicación', render: (item) => item.place || <span className="text-muted-foreground">Sin asignar</span> },
-            { key: 'state', label: 'Estado', render: (item) => (
-              <Badge
-                variant={stateVariants[item.state] || 'secondary'}
-                className={{
-                  Bueno: 'border-emerald-700 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600 dark:text-white',
-                  Regular: 'border-amber-700 bg-amber-600 text-white dark:border-amber-500 dark:bg-amber-600 dark:text-white',
-                  Malo: 'border-rose-700 bg-rose-600 text-white dark:border-rose-500 dark:bg-rose-600 dark:text-white',
-                }[item.state] || 'border-slate-700 bg-slate-600 text-white dark:border-slate-500 dark:bg-slate-600 dark:text-white'}
-              >
-                {item.state}
-              </Badge>
-            ) },
-            { key: 'actions', label: 'Acciones', render: (item) => (
+            { key: 'state', label: 'Estado físico', render: (item) => <Pill value={item.state} /> },
+            { key: 'operationalState', label: 'Estado operativo', render: (item) => <Pill value={item.operationalState || 'Operativo'} /> },
+            { key: 'actions', label: 'Acciones', hidden: !canEdit, render: (item) => (
               <span className="flex gap-1">
                 <Button type="button" variant="ghost" size="icon-sm" aria-label={`Editar ${item.name}`} title="Editar" onClick={() => openEdit(item)}>
                   <Pencil aria-hidden="true" />
@@ -233,7 +249,7 @@ export default function MaterialsPage() {
             <div className="flex items-start gap-3 pr-6">
               <div className="rounded-lg bg-primary/10 p-2 text-primary"><Package className="size-5" /></div>
               <div>
-                <DialogTitle>{editingId ? 'Editar material' : 'Agregar material'}</DialogTitle>
+                <DialogTitle>{editingId ? 'Editar bien mobiliario' : 'Registrar bien mobiliario'}</DialogTitle>
                 <DialogDescription className="mt-1">
                   {editingId
                     ? 'Actualiza la información y existencias de este material.'
@@ -248,16 +264,19 @@ export default function MaterialsPage() {
                 <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
                   <Package className="mt-0.5 size-4 text-primary" />
                   <div>
-                    <h3 className="text-sm font-semibold">1. Identificación del material</h3>
-                    <p className="text-xs text-muted-foreground">Indica qué material estás registrando.</p>
+                    <h3 className="text-sm font-semibold">1. Identificación del bien</h3>
+                    <p className="text-xs text-muted-foreground">Nivel, código patrimonial, denominación y categoría.</p>
                   </div>
                 </div>
-                <div className="grid gap-3 p-3">
-                  <Field label="Nombre del material *">
-                    <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Sillas" maxLength={160} required />
+                <div className="grid gap-3 p-3 sm:grid-cols-2">
+                  <Field label="Nivel *">
+                    <Select value={form.level} onChange={(level) => setForm({ ...form, level })} options={[{ value: '', label: 'Seleccione' }, ...['Primaria', 'Secundaria', 'Ambos'].map((value) => ({ value, label: value }))]} required />
                   </Field>
-                  <Field label="COD MINEDU">
-                    <Input value={form.codMinedu} onChange={(event) => setForm({ ...form, codMinedu: event.target.value })} placeholder="Código patrimonial MINEDU" maxLength={80} />
+                  <Field label="Código patrimonial *">
+                    <Input value={form.codMinedu} onChange={(event) => setForm({ ...form, codMinedu: event.target.value })} placeholder="74648119-0473" maxLength={80} required />
+                  </Field>
+                  <Field label="Denominación *" className="sm:col-span-2">
+                    <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Silla de madera" maxLength={160} required />
                   </Field>
                   <Field label="Categoría *">
                     <Choice
@@ -272,6 +291,17 @@ export default function MaterialsPage() {
                       </p>
                     )}
                   </Field>
+                  <Field label="Tipo *">
+                    <Input list="furniture-types" value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })} placeholder="Silla" maxLength={80} required />
+                    <datalist id="furniture-types">{FURNITURE_TYPES.map((value) => <option key={value} value={value} />)}</datalist>
+                  </Field>
+                  <Field label="Color">
+                    <Input list="furniture-colors" value={form.color} onChange={(event) => setForm({ ...form, color: event.target.value })} placeholder="Caoba" maxLength={60} />
+                    <datalist id="furniture-colors">{COLORS.map((value) => <option key={value} value={value} />)}</datalist>
+                  </Field>
+                  <Field label="Dimensiones (largo × ancho × alto)">
+                    <Input value={form.dimensions} onChange={(event) => setForm({ ...form, dimensions: event.target.value })} placeholder="46 × 44 × 75 cm" maxLength={80} />
+                  </Field>
                 </div>
               </section>
 
@@ -279,8 +309,8 @@ export default function MaterialsPage() {
                 <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
                   <Boxes className="mt-0.5 size-4 text-primary" />
                   <div>
-                    <h3 className="text-sm font-semibold">2. Existencias y estado</h3>
-                    <p className="text-xs text-muted-foreground">Registra cuánto hay disponible y su condición.</p>
+                    <h3 className="text-sm font-semibold">2. Cantidad, estados y registro</h3>
+                    <p className="text-xs text-muted-foreground">Cuántos hay, su condición y la fecha de registro.</p>
                   </div>
                 </div>
                 <div className="grid gap-3 p-3 sm:grid-cols-2">
@@ -290,8 +320,14 @@ export default function MaterialsPage() {
                   <Field label="Unidad *">
                     <Input value={form.unit} onChange={(event) => setForm({ ...form, unit: event.target.value })} placeholder="unidad, paquete, caja…" maxLength={40} required />
                   </Field>
-                  <Field label="Estado" className="sm:col-span-2">
+                  <Field label="Estado físico *">
                     <Choice value={form.state} onChange={(value) => setForm({ ...form, state: value })} options={['Bueno', 'Regular', 'Malo'].map((value) => ({ value, label: value }))} />
+                  </Field>
+                  <Field label="Estado operativo *">
+                    <Choice value={form.operationalState} onChange={(value) => setForm({ ...form, operationalState: value })} options={['Operativo', 'Con fallas', 'Inoperativo'].map((value) => ({ value, label: value }))} />
+                  </Field>
+                  <Field label="Fecha de registro *" className="sm:col-span-2">
+                    <Input type="date" value={form.registeredOn} onChange={(event) => setForm({ ...form, registeredOn: event.target.value })} required />
                   </Field>
                 </div>
               </section>
@@ -300,7 +336,7 @@ export default function MaterialsPage() {
                 <div className="flex items-start gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
                   <MapPin className="mt-0.5 size-4 text-primary" />
                   <div>
-                    <h3 className="text-sm font-semibold">3. Ubicación</h3>
+                    <h3 className="text-sm font-semibold">3. Ubicación *</h3>
                     <p className="text-xs text-muted-foreground">Puedes dejarla vacía si aún no está asignado.</p>
                   </div>
                 </div>

@@ -1,11 +1,12 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { canView, homePath, isStaff } from './lib/permissions'
 import { Monitor } from 'lucide-react'
 import { AppProvider, useApp } from './context/AppContext'
 import Layout from './components/Layout'
 import { Toasts } from './components/Toasts'
 import Login from './pages/Login'
 import TeacherHome from './pages/TeacherHome'
-import NewRequest from './pages/NewRequest'
+import NewRequestDialog from './pages/reservations/NewRequestDialog'
 import MyRequests from './pages/MyRequests'
 import CalendarPage from './pages/CalendarPage'
 import AdminRequests from './pages/AdminRequests'
@@ -17,24 +18,43 @@ import MaterialsPage from './pages/campus/Materials'
 import ProfilePage from './pages/Profile'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
-import { DocumentsPage, FixedHoursPage, ReportsPage } from './pages/campus/Reports'
+import { DocumentsPage, FixedHoursPage } from './pages/campus/Reports'
+import { ReportsPage } from './pages/campus/ReportsCenter'
+import AttendancePanel from './pages/attendance/AttendancePanel'
+import AttendanceScan from './pages/attendance/AttendanceScan'
+import StudentsPage from './pages/attendance/Students'
+import QrCodesPage from './pages/attendance/QrCodes'
+import AttendanceHistory from './pages/attendance/AttendanceHistory'
+import JustificationsPage from './pages/attendance/Justifications'
+import AttendanceReports from './pages/attendance/AttendanceReports'
+import ParentLogin from './pages/parents/ParentLogin'
+import ParentPortal from './pages/parents/ParentPortal'
+
+function NewRequestRoute() {
+  const navigate = useNavigate()
+  return <NewRequestDialog onClose={() => navigate('/panel/solicitudes')} onComplete={() => navigate('/panel/solicitudes')} />
+}
 
 function HomeRedirect() {
   const { user } = useApp()
-  if (!user) return <Navigate to="/login" replace />
-  return <Navigate to={user.role === 'admin' ? '/admin' : '/panel'} replace />
+  return <Navigate to={homePath(user)} replace />
 }
 
 function RequireAuth({ role }) {
   const { user } = useApp()
+  const location = useLocation()
   if (!user) return <Navigate to="/login" replace />
-  if (user.role !== role) return <Navigate to={user.role === 'admin' ? '/admin' : '/panel'} replace />
+  if (role === 'staff') {
+    if (!isStaff(user) || !canView(user, location.pathname)) return <Navigate to={homePath(user)} replace />
+  } else if (user.role !== role) {
+    return <Navigate to={homePath(user)} replace />
+  }
   return <Layout />
 }
 
 function GuestOnly() {
   const { user } = useApp()
-  if (user) return <Navigate to={user.role === 'admin' ? '/admin' : '/panel'} replace />
+  if (user) return <Navigate to={homePath(user)} replace />
   return <Login />
 }
 
@@ -58,14 +78,16 @@ function Gate() {
       <Routes>
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/login" element={<GuestOnly />} />
+          <Route path="/padres" element={<ParentLogin />} />
+          <Route path="/padres/panel" element={<ParentPortal />} />
           <Route element={<RequireAuth role="teacher" />}>
             <Route path="/panel" element={<TeacherHome />} />
             <Route path="/panel/perfil" element={<ProfilePage />} />
-            <Route path="/panel/nueva" element={<NewRequest />} />
+            <Route path="/panel/nueva" element={<NewRequestRoute />} />
             <Route path="/panel/solicitudes" element={<MyRequests />} />
             <Route path="/panel/calendario" element={<CalendarPage />} />
           </Route>
-          <Route element={<RequireAuth role="admin" />}>
+          <Route element={<RequireAuth role="staff" />}>
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/admin/perfil" element={<ProfilePage />} />
             <Route path="/admin/inventario" element={<EquipmentPage />} />
@@ -79,6 +101,13 @@ function Gate() {
             <Route path="/admin/mantenimiento/historial" element={<HistoryPage />} />
             <Route path="/admin/mantenimiento/repuestos" element={<PartsPage />} />
             <Route path="/admin/reportes" element={<ReportsPage />} />
+            <Route path="/admin/asistencia" element={<AttendancePanel />} />
+            <Route path="/admin/asistencia/escanear" element={<AttendanceScan />} />
+            <Route path="/admin/asistencia/estudiantes" element={<StudentsPage />} />
+            <Route path="/admin/asistencia/qr" element={<QrCodesPage />} />
+            <Route path="/admin/asistencia/historial" element={<AttendanceHistory />} />
+            <Route path="/admin/asistencia/justificaciones" element={<JustificationsPage />} />
+            <Route path="/admin/asistencia/reportes" element={<AttendanceReports />} />
             <Route path="/admin/documentos" element={<DocumentsPage />} />
             <Route path="/admin/horarios" element={<FixedHoursPage />} />
             <Route path="/admin/solicitudes" element={<AdminRequests />} />

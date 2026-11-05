@@ -8,6 +8,8 @@ import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/l
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
 import { config } from './config.js'
 import { campusRouter, ensureCampus } from './campus.js'
+import { attendanceRouter, ensureAttendance } from './attendance.js'
+import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
 
 const app = express()
@@ -15,6 +17,8 @@ const frontendDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
 app.use(cors())
 app.use(express.json())
 app.use(campusRouter())
+app.use(attendanceRouter())
+app.use(parentsRouter())
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
@@ -97,7 +101,7 @@ app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
 
 app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
   const [users, requests, notifications] = await Promise.all([
-    pool.query(`SELECT id, name, email, ${req.user.role === 'admin' ? 'dni, ' : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
+    pool.query(`SELECT id, name, email, ${req.user.role === 'admin' ? `dni, ${USER_PROFILE_COLUMNS}, ` : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
     loadRequests(req.user),
     pool.query(
       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30',
@@ -301,13 +305,41 @@ app.post('/api/requests/:id/decide', requireAuth, requireAdmin, wrap(async (req,
   }
 }))
 
+const USER_PROFILE_COLUMNS = "first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes"
+
+const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
+const CONDITIONS = ['Nombrado', 'Contratado', 'Reasignado', 'Destacado', 'Practicante', 'Otro']
+
+/** Optional profile data; full name is rebuilt from first and last names when both are given. */
+function profileInput(body) {
+  const firstNames = String(body.firstNames || '').trim().slice(0, 120)
+  const lastNames = String(body.lastNames || '').trim().slice(0, 120)
+  const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.birthDate || '')) ? body.birthDate : null
+  return {
+    provided: Object.prototype.hasOwnProperty.call(body, 'firstNames'),
+    firstNames,
+    lastNames,
+    fullName: firstNames && lastNames ? `${firstNames} ${lastNames}` : '',
+    birthDate,
+    gender: GENDERS.includes(body.gender) ? body.gender : '',
+    phone: String(body.phone || '').replace(/[^\d+\s-]/g, '').trim().slice(0, 30),
+    employmentCondition: CONDITIONS.includes(body.employmentCondition) ? body.employmentCondition : '',
+    notes: String(body.notes || '').trim().slice(0, 500),
+  }
+}
+
+const ROLES = ['admin', 'teacher', 'director', 'auxiliar']
+const STAFF = ['admin', 'director', 'auxiliar']
+const ROLE_SUBJECT = { admin: 'Coordinación académica', director: 'Dirección', auxiliar: 'Auxiliar de educación' }
+
 app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
-  const name = String(req.body.name || '').trim()
+  const profile = profileInput(req.body)
+  const name = profile.fullName || String(req.body.name || '').trim()
   const email = String(req.body.email || '').trim().toLowerCase()
   const dni = String(req.body.dni || '').trim()
   const role = String(req.body.role || 'teacher')
-  const subject = String(req.body.subject || (role === 'admin' ? 'Coordinación académica' : '')).trim()
-  if (!['admin', 'teacher'].includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+  if (!ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+  const subject = role === 'teacher' ? String(req.body.subject || '').trim() : ROLE_SUBJECT[role]
   if (name.length < 5) return res.status(400).json({ ok: false, error: 'Escribe nombre y apellido.' })
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'El correo no es válido.' })
   if (role === 'teacher' && subject.length < 3) return res.status(400).json({ ok: false, error: 'Indica el área o asignatura.' })
@@ -316,16 +348,18 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   if (dup.some((item) => item.email === email)) return res.status(409).json({ ok: false, error: 'Ese correo ya está registrado.' })
   if (dup.some((item) => item.dni === dni)) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   const [created] = await pool.query(
-    'INSERT INTO users (name, email, dni, password_hash, role, subject) VALUES (?, ?, ?, ?, ?, ?)',
-    [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject],
+    `INSERT INTO users (name, email, dni, password_hash, role, subject, first_names, last_names, birth_date, gender, phone, employment_condition, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes],
   )
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [created.insertId])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes FROM users WHERE id = ?`, [created.insertId])
   const user = mapUser(rows[0])
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
 
 app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
-  const name = String(req.body.name || '').trim()
+  const profile = profileInput(req.body)
+  const name = profile.fullName || String(req.body.name || '').trim()
   const email = String(req.body.email || '').trim().toLowerCase()
   const subject = String(req.body.subject || '').trim()
   const dni = String(req.body.dni || '').trim()
@@ -335,6 +369,15 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
   const [targets] = await pool.query('SELECT id, role FROM users WHERE id = ?', [req.params.id])
   const target = targets[0]
   if (!target) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
+  // Staff accounts can switch between staff roles; teachers stay teachers.
+  let role = target.role
+  if (target.role !== 'teacher' && req.body.role) {
+    role = String(req.body.role)
+    if (!STAFF.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+    if (Number(target.id) === Number(req.user.id) && role !== 'admin') {
+      return res.status(400).json({ ok: false, error: 'No puedes quitarte el rol de coordinación a ti mismo.' })
+    }
+  }
   if (target.role === 'teacher' && subject.length < 3) {
     return res.status(400).json({ ok: false, error: 'Indica el área o asignatura.' })
   }
@@ -343,24 +386,28 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
   const [duplicate] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.params.id])
   if (duplicate.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   const [result] = await pool.query(
-    `UPDATE users SET name = ?, email = ?, subject = ?, dni = ? WHERE id = ?`,
-    [name, email, target.role === 'teacher' ? subject : 'Coordinación académica', dni, req.params.id],
+    // Profile columns only change when the form sends them (the Usuarios view does not).
+    `UPDATE users SET name = ?, email = ?, subject = ?, dni = ?, role = ?,
+       first_names = IF(?, ?, first_names), last_names = IF(?, ?, last_names), birth_date = IF(?, ?, birth_date),
+       gender = IF(?, ?, gender), phone = IF(?, ?, phone), employment_condition = IF(?, ?, employment_condition), notes = IF(?, ?, notes)
+     WHERE id = ?`,
+    [name, email, role === 'teacher' ? subject : ROLE_SUBJECT[role], dni, role,
+      ...[profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes].flatMap((value) => [profile.provided, value]),
+      req.params.id],
   )
   if (!result.affectedRows) {
     const [rows] = await pool.query('SELECT id FROM users WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
   }
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.params.id])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes FROM users WHERE id = ?`, [req.params.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
 app.post('/api/users/:id/active', requireAuth, requireAdmin, wrap(async (req, res) => {
   const active = req.body.active ? 1 : 0
-  const [result] = await pool.query(
-    `UPDATE users SET active = ? WHERE id = ? AND role = 'teacher'`,
-    [active, req.params.id],
-  )
-  if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'Profesor no encontrado.' })
+  if (Number(req.params.id) === Number(req.user.id)) return res.status(400).json({ ok: false, error: 'No puedes desactivar tu propia cuenta.' })
+  const [result] = await pool.query('UPDATE users SET active = ? WHERE id = ?', [active, req.params.id])
+  if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'Usuario no encontrado.' })
   res.json({ ok: true })
 }))
 
@@ -423,6 +470,8 @@ if (process.env.NODE_ENV !== 'production') {
   app.post('/api/demo/reset', requireAuth, requireAdmin, wrap(async (_req, res) => {
     await resetAndSeed()
     await ensureCampus()
+    await ensureAttendance()
+    await ensureParents()
     res.json({ ok: true })
   }))
 }
@@ -463,6 +512,8 @@ app.use((error, _req, res, _next) => {
 initDb()
   .then(async () => {
     await ensureCampus()
+    await ensureAttendance()
+    await ensureParents()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)
       console.log(`Base de datos ${config.db.database} en ${config.db.host}:${config.db.port}`)
@@ -489,6 +540,7 @@ async function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
   try {
     const payload = jwt.verify(token, config.jwtSecret)
+    if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await pool.query(
       'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
       [payload.sub],
@@ -502,14 +554,14 @@ async function requireAuth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo coordinación puede hacer esto.' })
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: req.user.role === 'director' ? 'Tu rol (Dirección) es de solo consulta.' : 'Solo coordinación puede hacer esto.' })
   next()
 }
 
 async function loadRequests(user) {
   const sql = `SELECT r.*, rooms.name AS room_name
     FROM requests r LEFT JOIN rooms ON rooms.id = r.room_id`
-  const [rows] = user.role === 'admin'
+  const [rows] = user.role === 'admin' || user.role === 'director'
     ? await pool.query(`${sql} ORDER BY r.date, r.start_time`)
     : await pool.query(
       `${sql} WHERE r.status IN ('pending', 'approved') OR r.teacher_id = ? ORDER BY r.date, r.start_time`,

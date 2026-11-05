@@ -8,13 +8,7 @@ function getInitials(name = '') {
 }
 
 const AVATAR_TONES = [
-  'bg-emerald-600 text-white',
-  'bg-teal-600 text-white',
-  'bg-indigo-600 text-white',
-  'bg-violet-600 text-white',
-  'bg-amber-600 text-white',
-  'bg-rose-600 text-white',
-  'bg-sky-600 text-white',
+  'bg-[#1e3a8a] text-white',
 ]
 
 function getAvatarTone(name = '') {

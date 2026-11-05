@@ -8,7 +8,7 @@ export const SCHOOL = {
 export const INCIDENT_STATUS = {
   registrada: 'Registrada',
   pendiente: 'Pendiente',
-  en_proceso: 'En proceso',
+  en_proceso: 'En atención',
   resuelta: 'Resuelta',
 }
 

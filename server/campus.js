@@ -25,6 +25,20 @@ const upload = multer({
   },
 })
 
+const evidenceUpload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (_req, file, done) => {
+      const extension = { 'image/jpeg': '.jpg', 'image/png': '.png', 'application/pdf': '.pdf' }[file.mimetype] || '.bin'
+      done(null, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${extension}`)
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 6 },
+  fileFilter: (_req, file, done) => {
+    done(null, ['image/jpeg', 'image/png', 'application/pdf'].includes(file.mimetype))
+  },
+})
+
 const profileUpload = multer({
   storage: multer.diskStorage({
     destination: uploadDir,
@@ -247,7 +261,9 @@ export function campusRouter() {
 
   router.get('/api/materials', requireAuth, wrap(async (_req, res) => {
     const [rows] = await getPool().query(
-      'SELECT id, name, cod_minedu AS codMinedu, category, quantity, unit, place, state, notes, updated_at AS updatedAt FROM material_inventory ORDER BY name',
+      `SELECT id, name, cod_minedu AS codMinedu, category, quantity, unit, place, state, notes, updated_at AS updatedAt,
+        level, type, color, dimensions, operational_state AS operationalState, DATE_FORMAT(registered_on, '%Y-%m-%d') AS registeredOn
+       FROM material_inventory ORDER BY name`,
     )
     res.json({
       ok: true,
@@ -260,9 +276,9 @@ export function campusRouter() {
     const error = validateMaterial(input)
     if (error) return res.status(400).json({ ok: false, error })
     const [created] = await getPool().query(
-      `INSERT INTO material_inventory (name, cod_minedu, category, quantity, unit, place, state, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes],
+      `INSERT INTO material_inventory (name, cod_minedu, category, quantity, unit, place, state, notes, level, type, color, dimensions, operational_state, registered_on)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()))`,
+      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, input.level, input.type, input.color, input.dimensions, input.operationalState, input.registeredOn],
     )
     res.status(201).json({ ok: true, id: created.insertId })
   }))
@@ -273,9 +289,10 @@ export function campusRouter() {
     if (error) return res.status(400).json({ ok: false, error })
     const [result] = await getPool().query(
       `UPDATE material_inventory
-       SET name = ?, cod_minedu = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?
+       SET name = ?, cod_minedu = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?,
+           level = ?, type = ?, color = ?, dimensions = ?, operational_state = ?, registered_on = COALESCE(?, registered_on)
        WHERE id = ?`,
-      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, req.params.id],
+      [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, input.level, input.type, input.color, input.dimensions, input.operationalState, input.registeredOn, req.params.id],
     )
     if (!result.affectedRows) {
       const [rows] = await getPool().query('SELECT id FROM material_inventory WHERE id = ?', [req.params.id])
@@ -319,20 +336,123 @@ export function campusRouter() {
     const input = equipmentInput(req.body)
     if (!input.name || !input.brand) return res.status(400).json({ ok: false, error: 'Nombre y marca son obligatorios.' })
     const code = input.code || await nextCode('equipment', 'EQ-', 3)
+    const [duplicate] = await getPool().query('SELECT id FROM equipment WHERE code = ?', [code])
+    if (duplicate.length) return res.status(409).json({ ok: false, error: `El código interno ${code} ya está en uso.` })
     const [created] = await getPool().query(
-      `INSERT INTO equipment
-        (code, category_id, type, name, brand, model, serial, patrimonial, mac, processor, ram, storage, os_name, place_id, responsible_id, physical_state, operational_state, registered_on, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, input.categoryId, input.type, input.name, input.brand, input.model, input.serial, input.patrimonial, input.mac, input.processor, input.ram, input.storage, input.os, input.placeId, input.responsibleId, input.physicalState, input.operationalState, input.registeredOn, input.notes],
+      `INSERT INTO equipment (code, ${EQUIPMENT_COLUMNS}) VALUES (?, ${EQUIPMENT_MARKS})`,
+      [code, ...equipmentValues(input)],
     )
     res.status(201).json({ ok: true, id: created.insertId, code })
   }))
 
+  /**
+   * Bulk import from the Excel template. Rows are matched to existing equipment by
+   * COD MINEDU (patrimonial) or serial number and updated; otherwise they are created.
+   */
+  router.post('/api/equipment/import', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 3000) : []
+    if (!items.length) return res.status(400).json({ ok: false, error: 'El archivo no tiene equipos para importar.' })
+    const pool = getPool()
+    const [categories] = await pool.query('SELECT id, name FROM categories')
+    const [places] = await pool.query('SELECT id, name FROM places')
+    const [people] = await pool.query('SELECT id, name, email, dni FROM users WHERE active = 1')
+    const norm = (value) => String(value || '').trim().toLowerCase()
+    const byName = (list, value) => list.find((item) => norm(item.name) === norm(value))
+    const findPerson = (value) => {
+      const text = norm(value)
+      return people.find((item) => norm(item.email) === text || String(item.dni || '') === text || norm(item.name) === text)
+    }
+    const PHYSICAL = ['Bueno', 'Regular', 'Malo']
+    const OPERATIONAL = ['Operativo', 'Con fallas', 'Inoperativo']
+    const pick = (list, value, fallback) => list.find((item) => norm(item) === norm(value)) || (value ? null : fallback)
+
+    const errors = []
+    const rows = []
+    items.forEach((raw, index) => {
+      const line = Number(raw.row) || index + 2
+      const problems = []
+      const input = equipmentInput(raw)
+      if (!input.name) problems.push('falta la denominación')
+      if (!input.brand) problems.push('falta la marca')
+      let categoryId = null
+      if (String(raw.category || '').trim()) {
+        categoryId = byName(categories, raw.category)?.id
+        if (!categoryId) problems.push(`categoría «${raw.category}» no existe`)
+      }
+      let placeId = null
+      if (String(raw.place || '').trim()) {
+        placeId = byName(places, raw.place)?.id
+        if (!placeId) problems.push(`ambiente «${raw.place}» no existe`)
+      }
+      let responsibleId = null
+      if (String(raw.responsible || '').trim()) {
+        responsibleId = findPerson(raw.responsible)?.id
+        if (!responsibleId) problems.push(`responsable «${raw.responsible}» no encontrado`)
+      }
+      const physicalState = pick(PHYSICAL, raw.physicalState, 'Bueno')
+      if (!physicalState) problems.push(`estado físico «${raw.physicalState}» no válido`)
+      const operationalState = pick(OPERATIONAL, raw.operationalState, 'Operativo')
+      if (!operationalState) problems.push(`estado operativo «${raw.operationalState}» no válido`)
+      if (raw.registeredOn && !/^\d{4}-\d{2}-\d{2}$/.test(String(raw.registeredOn))) problems.push('fecha de registro no válida')
+      if (raw.level && !['Primaria', 'Secundaria', 'Ambos'].includes(raw.level)) problems.push(`nivel «${raw.level}» no válido`)
+      if (problems.length) {
+        errors.push(`Fila ${line}: ${problems.join(', ')}.`)
+        return
+      }
+      rows.push({ ...input, categoryId, placeId, responsibleId, physicalState, operationalState })
+    })
+
+    const connection = await pool.getConnection()
+    let created = 0
+    let updated = 0
+    try {
+      await connection.beginTransaction()
+      const [last] = await connection.query("SELECT code FROM equipment WHERE code LIKE 'EQ-%' ORDER BY id DESC LIMIT 1")
+      let sequence = last[0] ? Number(String(last[0].code).slice(3)) || 0 : 0
+      for (const input of rows) {
+        const keys = []
+        const params = []
+        if (input.patrimonial) { keys.push('patrimonial = ?'); params.push(input.patrimonial) }
+        if (input.serial) { keys.push('serial = ?'); params.push(input.serial) }
+        const [existing] = keys.length
+          ? await connection.query(`SELECT id FROM equipment WHERE ${keys.join(' OR ')} LIMIT 1`, params)
+          : [[]]
+        const values = equipmentValues(input)
+        if (existing[0]) {
+          await connection.query(
+            `UPDATE equipment SET ${EQUIPMENT_SET} WHERE id = ?`,
+            [...values, existing[0].id],
+          )
+          updated += 1
+        } else {
+          sequence += 1
+          await connection.query(
+            `INSERT INTO equipment (code, ${EQUIPMENT_COLUMNS}) VALUES (?, ${EQUIPMENT_MARKS})`,
+            [`EQ-${String(sequence).padStart(3, '0')}`, ...values],
+          )
+          created += 1
+        }
+      }
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+    res.json({ ok: true, created, updated, skipped: errors.length, errors: errors.slice(0, 100) })
+  }))
+
   router.patch('/api/equipment/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = equipmentInput(req.body)
+    if (!input.name || !input.brand) return res.status(400).json({ ok: false, error: 'Denominación y marca son obligatorias.' })
+    if (input.code) {
+      const [duplicate] = await getPool().query('SELECT id FROM equipment WHERE code = ? AND id <> ?', [input.code, req.params.id])
+      if (duplicate.length) return res.status(409).json({ ok: false, error: `El código interno ${input.code} ya está en uso.` })
+    }
     await getPool().query(
-      `UPDATE equipment SET category_id=?, type=?, name=?, brand=?, model=?, serial=?, patrimonial=?, mac=?, processor=?, ram=?, storage=?, os_name=?, place_id=?, responsible_id=?, physical_state=?, operational_state=?, registered_on=?, notes=? WHERE id=?`,
-      [input.categoryId, input.type, input.name, input.brand, input.model, input.serial, input.patrimonial, input.mac, input.processor, input.ram, input.storage, input.os, input.placeId, input.responsibleId, input.physicalState, input.operationalState, input.registeredOn, input.notes, req.params.id],
+      `UPDATE equipment SET ${EQUIPMENT_SET}, code = COALESCE(NULLIF(?, ''), code) WHERE id = ?`,
+      [...equipmentValues(input), input.code, req.params.id],
     )
     res.json({ ok: true })
   }))
@@ -457,21 +577,23 @@ export function campusRouter() {
 
   router.post('/api/maintenance', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = maintenanceInput(req.body)
-    if (!input.equipmentId || !input.scheduledDate) return res.status(400).json({ ok: false, error: 'Elige el equipo y la fecha.' })
+    const problem = maintenanceProblem(input)
+    if (problem) return res.status(400).json({ ok: false, error: problem })
     const code = await nextCode('maintenance', `MNT-${new Date().getFullYear()}-`, 3)
     const [created] = await getPool().query(
-      `INSERT INTO maintenance (code, equipment_id, scheduled_date, start_time, end_time, type, status, activities, notes, responsible_id, next_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, input.equipmentId, input.scheduledDate, input.startTime, input.endTime, input.type, input.status, input.activities, input.notes, input.responsibleId, input.nextDate || null],
+      `INSERT INTO maintenance (code, ${MAINTENANCE_COLUMNS.join(', ')}) VALUES (?, ${MAINTENANCE_COLUMNS.map(() => '?').join(', ')})`,
+      [code, ...maintenanceValues(input)],
     )
     res.status(201).json({ ok: true, id: created.insertId, code })
   }))
 
   router.patch('/api/maintenance/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = maintenanceInput(req.body)
+    const problem = maintenanceProblem(input)
+    if (problem) return res.status(400).json({ ok: false, error: problem })
     await getPool().query(
-      `UPDATE maintenance SET equipment_id=?, scheduled_date=?, start_time=?, end_time=?, type=?, status=?, activities=?, notes=?, responsible_id=?, next_date=? WHERE id=?`,
-      [input.equipmentId, input.scheduledDate, input.startTime, input.endTime, input.type, input.status, input.activities, input.notes, input.responsibleId, input.nextDate || null, req.params.id],
+      `UPDATE maintenance SET ${MAINTENANCE_COLUMNS.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`,
+      [...maintenanceValues(input), req.params.id],
     )
     res.json({ ok: true })
   }))
@@ -501,15 +623,27 @@ export function campusRouter() {
     }
   }))
 
-  router.post('/api/maintenance/:id/photos', requireAuth, requireAdmin, upload.array('photos', 6), wrap(async (req, res) => {
+  router.get('/api/maintenance/:id', requireAuth, wrap(async (req, res) => {
+    const [rows] = await getPool().query(`${maintenanceSql()} WHERE m.id = ?`, [req.params.id])
+    if (!rows[0]) return res.status(404).json({ ok: false, error: 'Mantenimiento no encontrado.' })
+    const [photos] = await getPool().query('SELECT id, path, file_name AS fileName FROM maintenance_photos WHERE maintenance_id = ? ORDER BY id', [req.params.id])
+    res.json({ ok: true, maintenance: mapMaintenance(rows[0]), photos })
+  }))
+
+  router.delete('/api/maintenance/:id/photos/:photoId', requireAuth, requireAdmin, wrap(async (req, res) => {
+    await getPool().query('DELETE FROM maintenance_photos WHERE id = ? AND maintenance_id = ?', [req.params.photoId, req.params.id])
+    res.json({ ok: true })
+  }))
+
+  router.post('/api/maintenance/:id/photos', requireAuth, requireAdmin, evidenceUpload.array('photos', 6), wrap(async (req, res) => {
     for (const file of req.files || []) {
-      await getPool().query('INSERT INTO maintenance_photos (maintenance_id, path) VALUES (?, ?)', [req.params.id, `/api/uploads/${file.filename}`])
+      await getPool().query('INSERT INTO maintenance_photos (maintenance_id, path, file_name) VALUES (?, ?, ?)', [req.params.id, `/api/uploads/${file.filename}`, String(file.originalname || '').slice(0, 255)])
     }
     res.json({ ok: true })
   }))
 
   router.get('/api/incidents', requireAuth, wrap(async (req, res) => {
-    const [rows] = await getPool().query(`${incidentSql()} ORDER BY i.reported_on DESC, i.id DESC`)
+    const [rows] = await getPool().query(`${incidentSql()} ORDER BY COALESCE(i.detected_at, i.reported_on) DESC, i.id DESC`)
     const incidents = rows.map(mapIncident).filter((item) => matchesIncident(item, req.query))
     res.json({ ok: true, incidents: req.user.role === 'admin' ? incidents : incidents })
   }))
@@ -518,7 +652,7 @@ export function campusRouter() {
     const [rows] = await getPool().query(`${incidentSql()} WHERE i.id = ?`, [req.params.id])
     if (!rows[0]) return res.status(404).json({ ok: false, error: 'Incidencia no encontrada.' })
     const [photos] = await getPool().query(
-      'SELECT id, kind, path FROM incident_photos WHERE incident_id = ? ORDER BY id',
+      'SELECT id, kind, path, file_name AS fileName FROM incident_photos WHERE incident_id = ? ORDER BY id',
       [req.params.id],
     )
     res.json({
@@ -533,21 +667,28 @@ export function campusRouter() {
 
   router.post('/api/incidents', requireAuth, wrap(async (req, res) => {
     const input = incidentInput(req.body)
-    if (!input.equipmentId || input.title.length < 8) return res.status(400).json({ ok: false, error: 'Vincula el equipo y describe la falla.' })
+    const problem = incidentProblem(input)
+    if (problem) return res.status(400).json({ ok: false, error: problem })
+    if (req.user.role !== 'admin') {
+      input.status = 'pendiente'
+      input.assigneeId = null
+      input.solution = ''
+    }
     const code = await nextCode('incidents', `INC-${new Date().getFullYear()}-`, 3)
     const [created] = await getPool().query(
-      `INSERT INTO incidents (code, equipment_id, priority, status, assignee_id, title, description, solution, reported_on)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [code, input.equipmentId, input.priority, input.status, input.assigneeId, input.title, input.description, input.solution, input.reportedOn],
+      `INSERT INTO incidents (code, ${INCIDENT_COLUMNS.join(', ')}) VALUES (?, ${INCIDENT_COLUMNS.map(() => '?').join(', ')})`,
+      [code, ...incidentValues(input)],
     )
     res.status(201).json({ ok: true, id: created.insertId, code })
   }))
 
   router.patch('/api/incidents/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = incidentInput(req.body)
+    const problem = incidentProblem(input)
+    if (problem) return res.status(400).json({ ok: false, error: problem })
     await getPool().query(
-      `UPDATE incidents SET equipment_id=?, priority=?, status=?, assignee_id=?, title=?, description=?, solution=?, reported_on=? WHERE id=?`,
-      [input.equipmentId, input.priority, input.status, input.assigneeId, input.title, input.description, input.solution, input.reportedOn, req.params.id],
+      `UPDATE incidents SET ${INCIDENT_COLUMNS.map((column) => `${column} = ?`).join(', ')} WHERE id = ?`,
+      [...incidentValues(input), req.params.id],
     )
     res.json({ ok: true })
   }))
@@ -558,14 +699,19 @@ export function campusRouter() {
     res.json({ ok: true })
   }))
 
-  router.post('/api/incidents/:id/photos', requireAuth, upload.array('photos', 6), wrap(async (req, res) => {
+  router.post('/api/incidents/:id/photos', requireAuth, evidenceUpload.array('photos', 6), wrap(async (req, res) => {
     const kind = req.body.kind === 'after' ? 'after' : 'before'
     for (const file of req.files || []) {
       await getPool().query(
-        'INSERT INTO incident_photos (incident_id, kind, path) VALUES (?, ?, ?)',
-        [req.params.id, kind, `/api/uploads/${file.filename}`],
+        'INSERT INTO incident_photos (incident_id, kind, path, file_name) VALUES (?, ?, ?, ?)',
+        [req.params.id, kind, `/api/uploads/${file.filename}`, String(file.originalname || '').slice(0, 255)],
       )
     }
+    res.json({ ok: true })
+  }))
+
+  router.delete('/api/incidents/:id/photos/:photoId', requireAuth, requireAdmin, wrap(async (req, res) => {
+    await getPool().query('DELETE FROM incident_photos WHERE id = ? AND incident_id = ?', [req.params.photoId, req.params.id])
     res.json({ ok: true })
   }))
 
@@ -629,6 +775,47 @@ export function campusRouter() {
     res.json({ ok: true })
   }))
 
+  const REPORT_KINDS = ['inventario', 'incidencias', 'mantenimientos', 'reservas', 'resumen']
+
+  router.get('/api/reports', requireAuth, requireRoles('admin', 'director'), wrap(async (_req, res) => {
+    const [[{ total }]] = await getPool().query('SELECT COUNT(*) AS total FROM report_logs')
+    const [rows] = await getPool().query(
+      `SELECT r.id, r.kind, r.params, r.summary, r.created_at, u.name AS user_name
+        FROM report_logs r LEFT JOIN users u ON u.id = r.user_id
+        ORDER BY r.id DESC LIMIT 50`,
+    )
+    res.json({
+      ok: true,
+      total: Number(total),
+      reports: rows.map((row) => ({
+        id: row.id,
+        code: `REP-${String(row.id).padStart(4, '0')}`,
+        kind: row.kind,
+        params: typeof row.params === 'string' ? JSON.parse(row.params) : row.params,
+        summary: row.summary,
+        user: row.user_name || '—',
+        createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      })),
+    })
+  }))
+
+  router.post('/api/reports', requireAuth, requireRoles('admin', 'director'), wrap(async (req, res) => {
+    const kind = String(req.body.kind || '')
+    if (!REPORT_KINDS.includes(kind)) return res.status(400).json({ ok: false, error: 'Tipo de reporte no válido.' })
+    const params = req.body.params && typeof req.body.params === 'object' ? req.body.params : {}
+    const summary = String(req.body.summary || '').slice(0, 255)
+    const [created] = await getPool().query(
+      'INSERT INTO report_logs (kind, params, summary, user_id) VALUES (?, ?, ?, ?)',
+      [kind, JSON.stringify(params), summary, req.user.id],
+    )
+    res.status(201).json({ ok: true, id: created.insertId, code: `REP-${String(created.insertId).padStart(4, '0')}` })
+  }))
+
+  router.delete('/api/reports/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+    await getPool().query('DELETE FROM report_logs WHERE id = ?', [req.params.id])
+    res.json({ ok: true })
+  }))
+
   router.get('/api/summary', requireAuth, wrap(async (_req, res) => {
     const [maintenance] = await getPool().query('SELECT status, COUNT(*) AS total FROM maintenance GROUP BY status')
     const [incidents] = await getPool().query('SELECT status, priority, COUNT(*) AS total FROM incidents GROUP BY status, priority')
@@ -648,6 +835,105 @@ export function campusRouter() {
   }))
 
   return router
+}
+
+/** Adds the extended inventory fields and seeds the institution's categories and locations. */
+/** Incidents can now refer to furniture and keep location, reporter and evidence details. */
+/** Maintenance can target furniture and keeps priority, location, checklist and evidence names. */
+async function migrateMaintenanceFields(db) {
+  const [equipmentColumn] = await db.query("SHOW COLUMNS FROM maintenance LIKE 'equipment_id'")
+  if (equipmentColumn[0]?.Null === 'NO') await db.query('ALTER TABLE maintenance MODIFY equipment_id INT UNSIGNED NULL')
+  const columns = [
+    ['asset_kind', "VARCHAR(20) NOT NULL DEFAULT 'tecnologico'"],
+    ['material_id', 'INT UNSIGNED NULL'],
+    ['priority', "VARCHAR(20) NOT NULL DEFAULT 'media'"],
+    ['level', "VARCHAR(20) NOT NULL DEFAULT ''"],
+    ['place_name', "VARCHAR(120) NOT NULL DEFAULT ''"],
+    ['place_detail', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['executed_date', 'DATE NULL'],
+    ['checklist', 'TEXT NULL'],
+    ['other_activity', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['responsible_label', "VARCHAR(120) NOT NULL DEFAULT ''"],
+  ]
+  for (const [name, type] of columns) {
+    const [existing] = await db.query('SHOW COLUMNS FROM maintenance LIKE ?', [name])
+    if (!existing.length) await db.query(`ALTER TABLE maintenance ADD COLUMN ${name} ${type}`)
+  }
+  const [fileColumn] = await db.query("SHOW COLUMNS FROM maintenance_photos LIKE 'file_name'")
+  if (!fileColumn.length) await db.query("ALTER TABLE maintenance_photos ADD COLUMN file_name VARCHAR(255) NOT NULL DEFAULT ''")
+}
+
+async function migrateIncidentFields(db) {
+  const [equipmentColumn] = await db.query("SHOW COLUMNS FROM incidents LIKE 'equipment_id'")
+  if (equipmentColumn[0]?.Null === 'NO') await db.query('ALTER TABLE incidents MODIFY equipment_id INT UNSIGNED NULL')
+  const columns = [
+    ['asset_kind', "VARCHAR(20) NOT NULL DEFAULT 'tecnologico'"],
+    ['material_id', 'INT UNSIGNED NULL'],
+    ['level', "VARCHAR(20) NOT NULL DEFAULT ''"],
+    ['place_name', "VARCHAR(120) NOT NULL DEFAULT ''"],
+    ['place_detail', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['incident_type', "VARCHAR(80) NOT NULL DEFAULT ''"],
+    ['detected_at', 'DATETIME NULL'],
+    ['reported_by_role', "VARCHAR(40) NOT NULL DEFAULT ''"],
+    ['reporter_name', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['initial_state', "VARCHAR(40) NOT NULL DEFAULT ''"],
+    ['observations', "VARCHAR(200) NOT NULL DEFAULT ''"],
+  ]
+  for (const [name, type] of columns) {
+    const [existing] = await db.query('SHOW COLUMNS FROM incidents LIKE ?', [name])
+    if (!existing.length) await db.query(`ALTER TABLE incidents ADD COLUMN ${name} ${type}`)
+  }
+  const [fileColumn] = await db.query("SHOW COLUMNS FROM incident_photos LIKE 'file_name'")
+  if (!fileColumn.length) await db.query("ALTER TABLE incident_photos ADD COLUMN file_name VARCHAR(255) NOT NULL DEFAULT ''")
+}
+
+async function migrateInventoryFields(db) {
+  const addColumns = async (table, columns) => {
+    for (const [name, type] of columns) {
+      const [existing] = await db.query(`SHOW COLUMNS FROM ${table} LIKE ?`, [name])
+      if (!existing.length) await db.query(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`)
+    }
+  }
+  await addColumns('equipment', [
+    ['level', "VARCHAR(20) NOT NULL DEFAULT ''"],
+    ['color', "VARCHAR(60) NOT NULL DEFAULT ''"],
+    ['dimensions', "VARCHAR(80) NOT NULL DEFAULT ''"],
+    ['place_detail', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['responsible_role', "VARCHAR(160) NOT NULL DEFAULT ''"],
+    ['assignment_type', "VARCHAR(60) NOT NULL DEFAULT ''"],
+    ['use_condition', "VARCHAR(40) NOT NULL DEFAULT ''"],
+    ['accessories', 'TEXT NULL'],
+    ['acquisition_date', 'DATE NULL'],
+    ['acquisition_origin', "VARCHAR(60) NOT NULL DEFAULT ''"],
+    ['document_number', "VARCHAR(80) NOT NULL DEFAULT ''"],
+    ['useful_life', 'SMALLINT UNSIGNED NULL'],
+    ['warranty_start', 'DATE NULL'],
+    ['warranty_end', 'DATE NULL'],
+    ['inventory_status', "VARCHAR(40) NOT NULL DEFAULT 'Activo'"],
+    ['patrimonial_condition', "VARCHAR(40) NOT NULL DEFAULT ''"],
+  ])
+  await addColumns('material_inventory', [
+    ['level', "VARCHAR(20) NOT NULL DEFAULT ''"],
+    ['type', "VARCHAR(80) NOT NULL DEFAULT ''"],
+    ['color', "VARCHAR(60) NOT NULL DEFAULT ''"],
+    ['dimensions', "VARCHAR(80) NOT NULL DEFAULT ''"],
+    ['operational_state', "VARCHAR(40) NOT NULL DEFAULT 'Operativo'"],
+    ['registered_on', 'DATE NULL'],
+  ])
+  for (const name of ['Equipo informático', 'Bienes mobiliarios']) {
+    await db.query('INSERT IGNORE INTO categories (name) VALUES (?)', [name])
+  }
+  const classrooms = []
+  for (const level of ['Primaria', 'Secundaria']) {
+    for (const grade of [1, 2, 3, 4, 5]) for (const section of ['A', 'B', 'C']) classrooms.push(`${level} ${grade}${section}`)
+  }
+  const places = [
+    'Sala 1', 'Sala 2', 'Banda', 'Biblioteca', 'Biblioteca 1', 'Biblioteca 2', 'Depósito', 'Qaliwarma',
+    'Aula funcional de arte 01', 'Aula funcional de arte 02', 'Laboratorio de física 01', 'Laboratorio de física 02', 'Tópico',
+    'Sala de coordinadores 01', 'Sala de coordinadores 02', 'Sala de coordinadores Jhon', 'Subdirección secundaria',
+    'Subdirección primaria', 'Sala de profesores', 'Dirección', 'AULAC1', 'AULACN2', 'Laboratorio primaria', ...classrooms,
+  ]
+  for (const name of places) await db.query('INSERT IGNORE INTO places (name) VALUES (?)', [name])
 }
 
 export async function ensureCampus() {
@@ -713,6 +999,7 @@ export async function ensureCampus() {
     CONSTRAINT fk_equipment_place FOREIGN KEY (place_id) REFERENCES places(id),
     CONSTRAINT fk_equipment_user FOREIGN KEY (responsible_id) REFERENCES users(id)
   ) ENGINE=InnoDB`)
+  await migrateInventoryFields(db)
   await db.query(`CREATE TABLE IF NOT EXISTS equipment_photos (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     equipment_id INT UNSIGNED NOT NULL,
@@ -762,6 +1049,8 @@ export async function ensureCampus() {
     path VARCHAR(255) NOT NULL,
     CONSTRAINT fk_incident_photo FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE
   ) ENGINE=InnoDB`)
+  await migrateIncidentFields(db)
+  await migrateMaintenanceFields(db)
   await db.query(`CREATE TABLE IF NOT EXISTS parts (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(160) NOT NULL,
@@ -781,6 +1070,15 @@ export async function ensureCampus() {
     notes VARCHAR(500) NOT NULL DEFAULT '',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_document_equipment FOREIGN KEY (equipment_id) REFERENCES equipment(id)
+  ) ENGINE=InnoDB`)
+  await db.query(`CREATE TABLE IF NOT EXISTS report_logs (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    kind VARCHAR(40) NOT NULL,
+    params JSON NOT NULL,
+    summary VARCHAR(255) NOT NULL DEFAULT '',
+    user_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_report_logs_created (created_at)
   ) ENGINE=InnoDB`)
   await db.query(`CREATE TABLE IF NOT EXISTS fixed_schedules (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -929,18 +1227,27 @@ function equipmentSql() {
 
 function maintenanceSql() {
   return `SELECT m.*, e.code AS equipment_code, e.name AS equipment_name, e.brand, e.model, e.serial, e.type AS equipment_type,
-      c.name AS category_name, p.name AS place_name, u.name AS responsible_name
+      e.patrimonial AS equipment_patrimonial, c.name AS category_name, p.name AS place_name_equipment, u.name AS responsible_name,
+      mi.name AS material_name, mi.cod_minedu AS material_code, mi.type AS material_type, mi.category AS material_category, mi.place AS material_place
     FROM maintenance m
-    JOIN equipment e ON e.id = m.equipment_id
+    LEFT JOIN equipment e ON e.id = m.equipment_id
     LEFT JOIN categories c ON c.id = e.category_id
     LEFT JOIN places p ON p.id = e.place_id
+    LEFT JOIN material_inventory mi ON mi.id = m.material_id
     LEFT JOIN users u ON u.id = m.responsible_id`
 }
 
 function incidentSql() {
-  return `SELECT i.*, e.code AS equipment_code, e.name AS equipment_name, e.mac AS equipment_mac, e.serial AS equipment_serial, u.name AS assignee_name
+  return `SELECT i.*, e.code AS equipment_code, e.name AS equipment_name, e.mac AS equipment_mac, e.serial AS equipment_serial,
+      e.patrimonial AS equipment_patrimonial, e.type AS equipment_type, e.brand AS equipment_brand, e.model AS equipment_model,
+      c.name AS equipment_category, p.name AS place_name_equipment,
+      m.name AS material_name, m.cod_minedu AS material_code, m.type AS material_type, m.category AS material_category, m.place AS material_place,
+      u.name AS assignee_name
     FROM incidents i
-    JOIN equipment e ON e.id = i.equipment_id
+    LEFT JOIN equipment e ON e.id = i.equipment_id
+    LEFT JOIN categories c ON c.id = e.category_id
+    LEFT JOIN places p ON p.id = e.place_id
+    LEFT JOIN material_inventory m ON m.id = i.material_id
     LEFT JOIN users u ON u.id = i.assignee_id`
 }
 
@@ -984,44 +1291,89 @@ function mapEquipment(row) {
     operationalState: row.operational_state,
     registeredOn: String(row.registered_on).slice(0, 10),
     notes: row.notes || '',
+    level: row.level || '',
+    color: row.color || '',
+    dimensions: row.dimensions || '',
+    placeDetail: row.place_detail || '',
+    responsibleRole: row.responsible_role || '',
+    assignmentType: row.assignment_type || '',
+    useCondition: row.use_condition || '',
+    accessories: parseJsonList(row.accessories),
+    acquisitionDate: row.acquisition_date ? String(row.acquisition_date).slice(0, 10) : '',
+    acquisitionOrigin: row.acquisition_origin || '',
+    documentNumber: row.document_number || '',
+    usefulLife: row.useful_life || '',
+    warrantyStart: row.warranty_start ? String(row.warranty_start).slice(0, 10) : '',
+    warrantyEnd: row.warranty_end ? String(row.warranty_end).slice(0, 10) : '',
+    inventoryStatus: row.inventory_status || 'Activo',
+    patrimonialCondition: row.patrimonial_condition || '',
+  }
+}
+
+function parseJsonList(value) {
+  if (!value) return []
+  try {
+    const list = typeof value === 'string' ? JSON.parse(value) : value
+    return Array.isArray(list) ? list : []
+  } catch {
+    return []
   }
 }
 
 function mapMaintenance(row) {
+  const furniture = row.asset_kind === 'mobiliario'
   return {
     id: row.id,
     code: row.code,
+    assetKind: furniture ? 'mobiliario' : 'tecnologico',
     equipmentId: row.equipment_id,
-    equipmentCode: row.equipment_code,
-    equipmentName: row.equipment_name,
-    brand: row.brand,
-    model: row.model,
-    serial: row.serial,
-    typeName: row.equipment_type,
-    category: row.category_name || '',
-    place: row.place_name || '',
+    materialId: row.material_id,
+    equipmentCode: furniture ? (row.material_code || 'Mobiliario') : row.equipment_code,
+    equipmentName: furniture ? row.material_name : row.equipment_name,
+    patrimonial: furniture ? (row.material_code || '') : (row.equipment_patrimonial || ''),
+    brand: row.brand || '',
+    model: row.model || '',
+    serial: row.serial || '',
+    typeName: furniture ? (row.material_type || '') : (row.equipment_type || ''),
+    category: furniture ? (row.material_category || '') : (row.category_name || ''),
+    place: row.place_name || (furniture ? row.material_place : row.place_name_equipment) || '',
+    placeDetail: row.place_detail || '',
+    level: row.level || '',
+    priority: row.priority || 'media',
     date: String(row.scheduled_date).slice(0, 10),
+    executedDate: row.executed_date ? String(row.executed_date).slice(0, 10) : '',
     startTime: row.start_time ? String(row.start_time).slice(0, 5) : '',
     endTime: row.end_time ? String(row.end_time).slice(0, 5) : '',
     type: row.type,
     status: row.status,
     activities: row.activities || '',
+    checklist: parseJsonList(row.checklist),
+    otherActivity: row.other_activity || '',
     notes: row.notes || '',
     responsibleId: row.responsible_id,
-    responsible: row.responsible_name || '',
+    responsible: row.responsible_name || row.responsible_label || '',
+    responsibleLabel: row.responsible_label || '',
     nextDate: row.next_date ? String(row.next_date).slice(0, 10) : '',
   }
 }
 
 function mapIncident(row) {
+  const furniture = row.asset_kind === 'mobiliario'
   return {
     id: row.id,
     code: row.code,
+    assetKind: furniture ? 'mobiliario' : 'tecnologico',
     equipmentId: row.equipment_id,
-    equipmentCode: row.equipment_code,
-    equipmentName: row.equipment_name,
+    materialId: row.material_id,
+    equipmentCode: furniture ? (row.material_code || 'Mobiliario') : row.equipment_code,
+    equipmentName: furniture ? row.material_name : row.equipment_name,
     equipmentMac: row.equipment_mac || '',
     equipmentSerial: row.equipment_serial || '',
+    patrimonial: furniture ? (row.material_code || '') : (row.equipment_patrimonial || ''),
+    assetType: furniture ? (row.material_type || '') : (row.equipment_type || ''),
+    brand: row.equipment_brand || '',
+    model: row.equipment_model || '',
+    category: furniture ? (row.material_category || '') : (row.equipment_category || ''),
     priority: row.priority,
     status: row.status,
     assigneeId: row.assignee_id,
@@ -1030,6 +1382,15 @@ function mapIncident(row) {
     description: row.description || '',
     solution: row.solution || '',
     reportedOn: String(row.reported_on).slice(0, 10),
+    place: row.place_name || (furniture ? row.material_place : row.place_name_equipment) || '',
+    placeDetail: row.place_detail || '',
+    level: row.level || '',
+    incidentType: row.incident_type || row.title || '',
+    detectedAt: row.detected_at ? String(row.detected_at).slice(0, 16).replace(' ', 'T') : `${String(row.reported_on).slice(0, 10)}T00:00`,
+    reportedByRole: row.reported_by_role || '',
+    reporterName: row.reporter_name || '',
+    initialState: row.initial_state || '',
+    observations: row.observations || '',
   }
 }
 
@@ -1064,6 +1425,26 @@ function mapFixed(row) {
   }
 }
 
+/** Equipment columns written on create/update/import, paired with the API field name. */
+const EQUIPMENT_FIELDS = [
+  ['category_id', 'categoryId'], ['type', 'type'], ['name', 'name'], ['brand', 'brand'], ['model', 'model'],
+  ['serial', 'serial'], ['patrimonial', 'patrimonial'], ['mac', 'mac'], ['processor', 'processor'], ['ram', 'ram'],
+  ['storage', 'storage'], ['os_name', 'os'], ['place_id', 'placeId'], ['responsible_id', 'responsibleId'],
+  ['physical_state', 'physicalState'], ['operational_state', 'operationalState'], ['registered_on', 'registeredOn'], ['notes', 'notes'],
+  ['level', 'level'], ['color', 'color'], ['dimensions', 'dimensions'], ['place_detail', 'placeDetail'],
+  ['responsible_role', 'responsibleRole'], ['assignment_type', 'assignmentType'], ['use_condition', 'useCondition'],
+  ['accessories', 'accessories'], ['acquisition_date', 'acquisitionDate'], ['acquisition_origin', 'acquisitionOrigin'],
+  ['document_number', 'documentNumber'], ['useful_life', 'usefulLife'], ['warranty_start', 'warrantyStart'],
+  ['warranty_end', 'warrantyEnd'], ['inventory_status', 'inventoryStatus'], ['patrimonial_condition', 'patrimonialCondition'],
+]
+const EQUIPMENT_COLUMNS = EQUIPMENT_FIELDS.map(([column]) => column).join(', ')
+const EQUIPMENT_SET = EQUIPMENT_FIELDS.map(([column]) => `${column} = ?`).join(', ')
+const EQUIPMENT_MARKS = EQUIPMENT_FIELDS.map(() => '?').join(', ')
+const equipmentValues = (input) => EQUIPMENT_FIELDS.map(([, field]) => input[field])
+
+const optionalDate = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null)
+const text = (value, max) => String(value ?? '').trim().slice(0, max)
+
 function equipmentInput(body) {
   return {
     code: String(body.code || '').trim(),
@@ -1084,7 +1465,23 @@ function equipmentInput(body) {
     physicalState: body.physicalState || 'Bueno',
     operationalState: body.operationalState || 'Operativo',
     registeredOn: body.registeredOn || new Date().toISOString().slice(0, 10),
-    notes: String(body.notes || '').trim(),
+    notes: String(body.notes || '').trim().slice(0, 500),
+    level: ['Primaria', 'Secundaria', 'Ambos'].includes(body.level) ? body.level : '',
+    color: text(body.color, 60),
+    dimensions: text(body.dimensions, 80),
+    placeDetail: text(body.placeDetail, 160),
+    responsibleRole: text(body.responsibleRole, 160),
+    assignmentType: text(body.assignmentType, 60),
+    useCondition: text(body.useCondition, 40),
+    accessories: Array.isArray(body.accessories) ? JSON.stringify(body.accessories.slice(0, 30)) : (typeof body.accessories === 'string' && body.accessories.startsWith('[') ? body.accessories : null),
+    acquisitionDate: optionalDate(body.acquisitionDate),
+    acquisitionOrigin: text(body.acquisitionOrigin, 60),
+    documentNumber: text(body.documentNumber, 80),
+    usefulLife: Number.isInteger(Number(body.usefulLife)) && Number(body.usefulLife) > 0 && Number(body.usefulLife) < 100 ? Number(body.usefulLife) : null,
+    warrantyStart: optionalDate(body.warrantyStart),
+    warrantyEnd: optionalDate(body.warrantyEnd),
+    inventoryStatus: text(body.inventoryStatus, 40) || 'Activo',
+    patrimonialCondition: text(body.patrimonialCondition, 40),
   }
 }
 
@@ -1094,8 +1491,14 @@ function materialInput(body = {}) {
     name: String(body.name || '').trim(),
     codMinedu: String(body.codMinedu || '').trim(),
     category: String(body.category || '').trim(),
-    quantity: Number(body.quantity),
-    unit: String(body.unit || '').trim(),
+    quantity: body.quantity === '' || body.quantity == null ? 1 : Number(body.quantity),
+    unit: String(body.unit || '').trim() || 'unidad',
+    level: ['Primaria', 'Secundaria', 'Ambos'].includes(body.level) ? body.level : '',
+    type: String(body.type || '').trim().slice(0, 80),
+    color: String(body.color || '').trim().slice(0, 60),
+    dimensions: String(body.dimensions || '').trim().slice(0, 80),
+    operationalState: ['Operativo', 'Con fallas', 'Inoperativo'].includes(body.operationalState) ? body.operationalState : 'Operativo',
+    registeredOn: /^\d{4}-\d{2}-\d{2}$/.test(String(body.registeredOn || '')) ? body.registeredOn : null,
     place: String(body.place || '').trim(),
     state: String(body.state || ''),
     notes: String(body.notes || '').trim(),
@@ -1119,32 +1522,89 @@ function validateMaterial(input) {
 }
 
 function maintenanceInput(body) {
+  const furniture = body.assetKind === 'mobiliario'
+  const time = (value) => (/^\d{2}:\d{2}/.test(String(value || '')) ? String(value).slice(0, 5) : null)
+  const date = (value) => (/^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : null)
+  const checklist = Array.isArray(body.checklist) ? body.checklist.map((item) => String(item).slice(0, 80)).slice(0, 12) : []
   return {
-    equipmentId: body.equipmentId || null,
-    scheduledDate: body.scheduledDate || body.date,
-    startTime: body.startTime || null,
-    endTime: body.endTime || null,
-    type: body.type || 'Preventivo',
-    status: body.status || 'Programado',
-    activities: String(body.activities || '').trim(),
-    notes: String(body.notes || '').trim(),
+    assetKind: furniture ? 'mobiliario' : 'tecnologico',
+    equipmentId: furniture ? null : (body.equipmentId || null),
+    materialId: furniture ? (body.materialId || null) : null,
+    scheduledDate: date(body.scheduledDate || body.date),
+    executedDate: date(body.executedDate),
+    startTime: time(body.startTime),
+    endTime: time(body.endTime),
+    type: body.type === 'Correctivo' ? 'Correctivo' : 'Preventivo',
+    priority: ['alta', 'media', 'baja'].includes(body.priority) ? body.priority : 'media',
+    status: ['Programado', 'En proceso', 'Realizado', 'Pendiente'].includes(body.status) ? body.status : 'Programado',
+    activities: String(body.activities || '').trim().slice(0, 1000),
+    checklist: JSON.stringify(checklist),
+    otherActivity: String(body.otherActivity || '').trim().slice(0, 160),
+    notes: String(body.notes || '').trim().slice(0, 500),
     responsibleId: body.responsibleId || null,
-    nextDate: body.nextDate || null,
+    responsibleLabel: body.responsibleId ? '' : String(body.responsibleLabel || '').trim().slice(0, 120),
+    level: ['Primaria', 'Secundaria', 'Ambos'].includes(body.level) ? body.level : '',
+    placeName: String(body.place || '').trim().slice(0, 120),
+    placeDetail: String(body.placeDetail || '').trim().slice(0, 160),
+    nextDate: date(body.nextDate),
   }
 }
 
+function maintenanceProblem(input) {
+  if (input.assetKind === 'tecnologico' && !input.equipmentId) return 'Selecciona el bien tecnológico del inventario.'
+  if (input.assetKind === 'mobiliario' && !input.materialId) return 'Selecciona el bien mobiliario del inventario.'
+  if (!input.scheduledDate) return 'Indica la fecha programada.'
+  if (input.startTime && input.endTime && input.endTime <= input.startTime) return 'La hora de fin debe ser posterior a la de inicio.'
+  if (input.activities.length < 8) return 'Describe el mantenimiento (mínimo 8 caracteres).'
+  if (!input.responsibleId && !input.responsibleLabel) return 'Indica el responsable del mantenimiento.'
+  return ''
+}
+
+const MAINTENANCE_COLUMNS = ['asset_kind', 'equipment_id', 'material_id', 'scheduled_date', 'executed_date', 'start_time', 'end_time', 'type', 'priority', 'status',
+  'activities', 'checklist', 'other_activity', 'notes', 'responsible_id', 'responsible_label', 'level', 'place_name', 'place_detail', 'next_date']
+const maintenanceValues = (input) => [input.assetKind, input.equipmentId, input.materialId, input.scheduledDate, input.executedDate, input.startTime, input.endTime,
+  input.type, input.priority, input.status, input.activities, input.checklist, input.otherActivity, input.notes, input.responsibleId, input.responsibleLabel,
+  input.level, input.placeName, input.placeDetail, input.nextDate]
+
 function incidentInput(body) {
+  const detected = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(String(body.detectedAt || '')) ? String(body.detectedAt).slice(0, 16) : ''
+  const incidentType = String(body.incidentType || body.title || '').trim().slice(0, 80)
   return {
-    equipmentId: body.equipmentId || null,
-    priority: body.priority || 'media',
-    status: body.status || 'registrada',
+    assetKind: body.assetKind === 'mobiliario' ? 'mobiliario' : 'tecnologico',
+    equipmentId: body.assetKind === 'mobiliario' ? null : (body.equipmentId || null),
+    materialId: body.assetKind === 'mobiliario' ? (body.materialId || null) : null,
+    priority: ['alta', 'media', 'baja'].includes(body.priority) ? body.priority : 'media',
+    status: ['registrada', 'pendiente', 'en_proceso', 'resuelta'].includes(body.status) ? body.status : 'pendiente',
     assigneeId: body.assigneeId || null,
-    title: String(body.title || '').trim(),
-    description: String(body.description || '').trim(),
-    solution: String(body.solution || '').trim(),
-    reportedOn: body.reportedOn || new Date().toISOString().slice(0, 10),
+    title: (String(body.title || '').trim() || incidentType).slice(0, 180),
+    description: String(body.description || '').trim().slice(0, 800),
+    solution: String(body.solution || '').trim().slice(0, 800),
+    reportedOn: detected ? detected.slice(0, 10) : (body.reportedOn || new Date().toISOString().slice(0, 10)),
+    level: ['Primaria', 'Secundaria', 'Ambos'].includes(body.level) ? body.level : '',
+    placeName: String(body.place || '').trim().slice(0, 120),
+    placeDetail: String(body.placeDetail || '').trim().slice(0, 160),
+    incidentType,
+    detectedAt: detected ? `${detected.replace('T', ' ')}:00` : null,
+    reportedByRole: String(body.reportedByRole || '').trim().slice(0, 40),
+    reporterName: String(body.reporterName || '').trim().slice(0, 160),
+    initialState: ['Operativo', 'Con fallas', 'Inoperativo'].includes(body.initialState) ? body.initialState : '',
+    observations: String(body.observations || '').trim().slice(0, 200),
   }
 }
+
+function incidentProblem(input) {
+  if (input.assetKind === 'tecnologico' && !input.equipmentId) return 'Selecciona el bien tecnológico del inventario.'
+  if (input.assetKind === 'mobiliario' && !input.materialId) return 'Selecciona el bien mobiliario del inventario.'
+  if (!input.incidentType) return 'Selecciona el tipo de incidencia.'
+  if (input.description.length < 8) return 'Describe el problema (mínimo 8 caracteres).'
+  return ''
+}
+
+const INCIDENT_COLUMNS = ['asset_kind', 'equipment_id', 'material_id', 'priority', 'status', 'assignee_id', 'title', 'description', 'solution', 'reported_on',
+  'level', 'place_name', 'place_detail', 'incident_type', 'detected_at', 'reported_by_role', 'reporter_name', 'initial_state', 'observations']
+const incidentValues = (input) => [input.assetKind, input.equipmentId, input.materialId, input.priority, input.status, input.assigneeId, input.title,
+  input.description, input.solution, input.reportedOn, input.level, input.placeName, input.placeDetail, input.incidentType, input.detectedAt,
+  input.reportedByRole, input.reporterName, input.initialState, input.observations]
 
 function matchesEquipment(item, query) {
   const q = String(query.q || '').toLowerCase()
@@ -1157,9 +1617,12 @@ function matchesEquipment(item, query) {
 
 function matchesMaintenance(item, query) {
   const q = String(query.q || '').toLowerCase()
-  if (q && !`${item.code} ${item.equipmentName} ${item.activities}`.toLowerCase().includes(q)) return false
+  if (q && !`${item.code} ${item.equipmentName} ${item.patrimonial} ${item.activities} ${item.responsible}`.toLowerCase().includes(q)) return false
   if (query.status && item.status !== query.status) return false
+  if (query.type && item.type !== query.type) return false
   if (query.category && item.category !== query.category) return false
+  if (query.place && item.place !== query.place) return false
+  if (query.level && item.level !== query.level && item.level !== 'Ambos') return false
   if (query.from && item.date < query.from) return false
   if (query.to && item.date > query.to) return false
   return true
@@ -1167,9 +1630,14 @@ function matchesMaintenance(item, query) {
 
 function matchesIncident(item, query) {
   const q = String(query.q || '').toLowerCase()
-  if (q && !`${item.code} ${item.title} ${item.equipmentCode} ${item.equipmentName} ${item.assignee}`.toLowerCase().includes(q)) return false
-  if (query.status && item.status !== query.status) return false
+  if (q && !`${item.code} ${item.title} ${item.description} ${item.equipmentCode} ${item.equipmentName} ${item.patrimonial} ${item.assignee}`.toLowerCase().includes(q)) return false
+  if (query.status === 'pendiente' && !['pendiente', 'registrada'].includes(item.status)) return false
+  if (query.status && query.status !== 'pendiente' && item.status !== query.status) return false
   if (query.priority && item.priority !== query.priority) return false
+  if (query.place && item.place !== query.place) return false
+  if (query.level && item.level !== query.level && item.level !== 'Ambos') return false
+  if (query.from && item.reportedOn < query.from) return false
+  if (query.to && item.reportedOn > query.to) return false
   if (query.equipmentId && Number(item.equipmentId) !== Number(query.equipmentId)) return false
   return true
 }
@@ -1180,12 +1648,13 @@ async function nextCode(table, prefix, size) {
   return `${prefix}${String(last + 1).padStart(size, '0')}`
 }
 
-async function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const header = req.headers.authorization || ''
   const token = header.startsWith('Bearer ') ? header.slice(7) : ''
   if (!token) return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
   try {
     const payload = jwt.verify(token, config.jwtSecret)
+    if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await getPool().query(
       'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
       [payload.sub],
@@ -1198,7 +1667,15 @@ async function requireAuth(req, res, next) {
   }
 }
 
-function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo coordinación puede hacer esto.' })
+export function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: req.user.role === 'director' ? 'Tu rol (Dirección) es de solo consulta.' : 'Solo coordinación puede hacer esto.' })
   next()
+}
+
+/** Allows the request only for the given roles. */
+export function requireRoles(...roles) {
+  return (req, res, next) => {
+    if (!roles.includes(req.user.role)) return res.status(403).json({ ok: false, error: 'No tienes permiso para esta sección.' })
+    next()
+  }
 }
