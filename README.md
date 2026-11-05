@@ -24,6 +24,14 @@ También se admiten las variables MySQL `MYSQLHOST`, `MYSQLPORT`, `MYSQLUSER`,
 escucha en `0.0.0.0` usando el puerto asignado por Railway en `PORT`. En
 producción, `JWT_SECRET` debe tener al menos 32 caracteres.
 
+### Despliegue en EC2 (Ubuntu)
+
+Desde la carpeta del proyecto, ejecuta `npm run build:ec2` para instalar las
+dependencias exactas de `package-lock.json` (incluidas las de compilación) y
+generar el frontend de producción. Después, inicia o reinicia el proceso de la
+aplicación con el mecanismo que uses en EC2. Ejecuta este comando después de
+actualizar el código; `npm run build` por sí solo no instala dependencias.
+
 Genera una clave segura localmente con `node -p "require('node:crypto').randomBytes(48).toString('base64url')"`
 y copia el resultado directamente en **Variables** del servicio de la API en
 Railway con el nombre `JWT_SECRET` (sin añadir comillas). Guarda los cambios y
