@@ -9,8 +9,9 @@
     "server": "node --watch server/index.js",
     "start": "node server/index.js",
     "dev:stack": "concurrently -n web,api -c green,blue \"vite --host 127.0.0.1 --port 5173\" \"node --watch server/index.js\"",
+    "prebuild": "npm install --include=dev",
     "build": "vite build",
-    "build:ec2": "npm ci --include=dev && npm run build",
+    "build:ec2": "npm run build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
