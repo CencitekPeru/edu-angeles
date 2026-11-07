@@ -68,7 +68,6 @@ export function AuthShell({ badgeIcon: BadgeIcon, badge, title, text, children }
 
         <div className="relative w-full max-w-md">
           <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-6 shadow-2xl shadow-blue-950/10 sm:p-8">
-            <span aria-hidden="true" className="absolute inset-x-0 top-0 h-1" style={{ background: 'linear-gradient(90deg, #0f2e6b, #3b5ba5 55%, #94a3b8)' }} />
             {children}
           </div>
         </div>
