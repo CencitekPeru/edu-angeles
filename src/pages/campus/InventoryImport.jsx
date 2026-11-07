@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { SCHOOL } from '../../lib/school'
@@ -6,6 +6,7 @@ import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { keyOf, markDuplicates, numberRows } from './importChecks'
 
 /** Template columns: [header, field in the API payload, column width, example]. */
 const COLUMNS = [
@@ -206,6 +207,12 @@ export function ImportInventoryDialog({ onClose, onDone }) {
   const [fileName, setFileName] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
+  const [existing, setExisting] = useState([])
+
+  // Current inventory, to tell which rows create a new item and which update one.
+  useEffect(() => {
+    api('/api/equipment').then((response) => { if (response.ok) setExisting(response.equipment) })
+  }, [])
 
   async function read(file) {
     if (!file) return
@@ -237,7 +244,7 @@ export function ImportInventoryDialog({ onClose, onDone }) {
         if (isExample || !Object.entries(item).some(([key, value]) => key !== 'row' && !DATE_FIELDS.includes(key) && value)) return
         parsed.push(item)
       })
-      setRows(parsed)
+      setRows(markDuplicates(numberRows(parsed), [['patrimonial', 'COD MINEDU'], ['serial', 'N.° de serie']]))
       if (!parsed.length) toast('No se encontraron equipos en el archivo.', 'bad')
     } catch (error) {
       console.error(error)
@@ -245,9 +252,28 @@ export function ImportInventoryDialog({ onClose, onDone }) {
     }
   }
 
+  const checked = useMemo(() => {
+    const byPatrimonial = new Map(existing.filter((item) => keyOf(item.patrimonial)).map((item) => [keyOf(item.patrimonial), item]))
+    const bySerial = new Map(existing.filter((item) => keyOf(item.serial)).map((item) => [keyOf(item.serial), item]))
+    return rows.map((row) => {
+      const missingFields = [!row.patrimonial && 'COD MINEDU', !row.name && 'denominación', !row.brand && 'marca'].filter(Boolean)
+      if (missingFields.length) return { ...row, status: 'incomplete', note: `Falta ${missingFields.join(', ')}` }
+      if (row.duplicate) return { ...row, status: 'duplicate', note: row.duplicate }
+      const byCode = byPatrimonial.get(keyOf(row.patrimonial))
+      const bySerialMatch = keyOf(row.serial) ? bySerial.get(keyOf(row.serial)) : null
+      if (byCode && bySerialMatch && byCode.id !== bySerialMatch.id) {
+        return { ...row, status: 'duplicate', note: `La serie ya pertenece a ${bySerialMatch.code} y el COD MINEDU a ${byCode.code}` }
+      }
+      const match = byCode || bySerialMatch
+      return match ? { ...row, status: 'update', note: `Actualiza ${match.code}` } : { ...row, status: 'new', note: 'Nuevo' }
+    })
+  }, [rows, existing])
+  const valid = checked.filter((row) => row.status === 'new' || row.status === 'update')
+  const rejected = checked.length - valid.length
+
   async function submit() {
     setBusy(true)
-    const response = await api('/api/equipment/import', { method: 'POST', body: { items: rows } })
+    const response = await api('/api/equipment/import', { method: 'POST', body: { items: valid.map(({ status, note, duplicate, ...row }) => row) } })
     setBusy(false)
     if (!response.ok) return toast(response.error || 'No se pudo importar el inventario.', 'bad')
     setResult(response)
@@ -255,14 +281,13 @@ export function ImportInventoryDialog({ onClose, onDone }) {
     onDone()
   }
 
-  const missing = (row) => !row.name || !row.brand
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="size-5 text-primary" /> Importar inventario desde Excel</DialogTitle>
-          <DialogDescription>Usa el formato descargado. Si el COD MINEDU o el N.° de serie ya existe, el equipo se actualiza; si no, se registra como nuevo.</DialogDescription>
+          <DialogDescription>Usa el formato descargado. Si el COD MINEDU o el N.° de serie ya existe, el equipo se actualiza; si no, se registra como nuevo. No se permiten códigos ni series repetidos en el archivo.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -278,13 +303,14 @@ export function ImportInventoryDialog({ onClose, onDone }) {
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-foreground/75 dark:bg-muted">
-                  <tr>{['Fila', 'COD MINEDU', 'Denominación', 'Marca / Modelo', 'Serie', 'Categoría', 'Ambiente', 'Estado'].map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 text-left font-bold">{label}</th>)}</tr>
+                  <tr>{['Fila', 'Resultado', 'COD MINEDU', 'Denominación', 'Marca / Modelo', 'Serie', 'Categoría', 'Ambiente', 'Estado'].map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 text-left font-bold">{label}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {rows.slice(0, 200).map((row) => (
-                    <tr key={row.row} className={cn('border-t border-border/70', missing(row) && 'bg-[#fbf1f0] dark:bg-red-500/10')}>
+                  {checked.slice(0, 200).map((row) => (
+                    <tr key={row.row} className={cn('border-t border-border/70', !valid.includes(row) && 'bg-[#fbf1f0] dark:bg-red-500/10')}>
                       <td className="px-3 py-1.5 text-muted-foreground">{row.row}</td>
-                      <td className="px-3 py-1.5">{row.patrimonial || '—'}</td>
+                      <td className="px-3 py-1.5"><ImportStatus row={row} /></td>
+                      <td className={cn('px-3 py-1.5', !row.patrimonial && 'font-semibold text-destructive')}>{row.patrimonial || 'Falta'}</td>
                       <td className={cn('px-3 py-1.5', !row.name && 'font-semibold text-destructive')}>{row.name || 'Falta'}</td>
                       <td className={cn('px-3 py-1.5', !row.brand && 'font-semibold text-destructive')}>{row.brand || 'Falta'} {row.model}</td>
                       <td className="px-3 py-1.5">{row.serial || '—'}</td>
@@ -297,8 +323,8 @@ export function ImportInventoryDialog({ onClose, onDone }) {
               </table>
             </div>
             <p className="text-sm text-muted-foreground">
-              {rows.length} equipo(s) leídos{rows.length > 200 ? ' (se muestran los primeros 200)' : ''}.
-              {rows.some(missing) && <span className="ml-1 font-semibold text-destructive">{rows.filter(missing).length} fila(s) sin denominación o marca no se importarán.</span>}
+              {rows.length} equipo(s) leídos{rows.length > 200 ? ' (se muestran los primeros 200)' : ''}: {valid.filter((row) => row.status === 'new').length} nuevos, {valid.filter((row) => row.status === 'update').length} actualizan uno existente.
+              {rejected > 0 && <span className="ml-1 font-semibold text-destructive">{rejected} fila(s) repetidas o incompletas no se importarán.</span>}
             </p>
           </>
         )}
@@ -316,10 +342,27 @@ export function ImportInventoryDialog({ onClose, onDone }) {
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Cerrar</Button>
-          <Button type="button" disabled={!rows.length || busy || Boolean(result)} onClick={submit}><Upload /> {busy ? 'Importando…' : `Importar ${rows.length || ''} equipo(s)`}</Button>
+          <Button type="button" disabled={!valid.length || busy || Boolean(result)} onClick={submit}><Upload /> {busy ? 'Importando…' : `Importar ${valid.length || ''} equipo(s)`}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
+const STATUS_STYLE = {
+  new: 'text-[#3f7d5c]',
+  update: 'text-primary',
+  duplicate: 'text-destructive',
+  incomplete: 'text-destructive',
+}
+const STATUS_LABEL = { new: 'Nuevo', update: 'Actualiza', duplicate: 'Repetido', incomplete: 'Incompleto' }
+
+/** Import preview cell: what will happen with the row. */
+export function ImportStatus({ row }) {
+  return (
+    <span className={cn('whitespace-nowrap font-semibold', STATUS_STYLE[row.status])} title={row.note}>
+      {STATUS_LABEL[row.status]}
+      {row.status !== 'new' && <span className="block max-w-56 truncate text-[11px] font-normal">{row.note}</span>}
+    </span>
+  )
+}

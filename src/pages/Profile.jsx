@@ -78,7 +78,7 @@ export default function ProfilePage() {
 
           <dl className="divide-y divide-border border-t border-border text-sm">
             {[
-              [ShieldCheck, 'Rol', { admin: 'Coordinador de Innovación y Soporte Tecnológico', director: 'Dirección (solo consulta)', auxiliar: 'Auxiliar de educación (asistencia)' }[user.role] || 'Docente'],
+              [ShieldCheck, 'Rol', { admin: 'Coordinador de Innovación y Soporte Tecnológico', director: 'Dirección (solo consulta)', auxiliar: 'Auxiliar de educación (asistencia)', psicologo: 'Psicología (atención psicológica)' }[user.role] || 'Docente'],
               [Mail, 'Correo', user.email],
               [IdCard, 'DNI', maskDni(user.dni)],
               [BadgeCheck, 'Institución', `${SCHOOL.name} · ${SCHOOL.place}`],

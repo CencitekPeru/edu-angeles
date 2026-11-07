@@ -48,3 +48,27 @@ export async function upload(path, files, fields = {}) {
   const data = await response.json().catch(() => ({}))
   return { ...data, ok: response.ok }
 }
+
+/** Downloads a file from an authenticated endpoint, using the name the server suggests. */
+export async function download(path, fallbackName = 'descarga') {
+  let response
+  try {
+    response = await fetch(path, { headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {} })
+  } catch {
+    return { ok: false, error: 'No hay conexión con el servidor.' }
+  }
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}))
+    return { ok: false, error: data.error || 'No se pudo descargar el archivo.' }
+  }
+  const name = /filename="([^"]+)"/.exec(response.headers.get('Content-Disposition') || '')?.[1] || fallbackName
+  const url = URL.createObjectURL(await response.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = name
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+  return { ok: true, name }
+}

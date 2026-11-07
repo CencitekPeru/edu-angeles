@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, FileSpreadsheet, Upload } from 'lucide-react'
 import { api } from '../../lib/api'
 import { SCHOOL } from '../../lib/school'
@@ -6,6 +6,8 @@ import { useApp } from '../../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
+import { keyOf, markDuplicates, numberRows } from './importChecks'
+import { ImportStatus } from './InventoryImport'
 
 /** Template columns: [header, field in the API payload, column width, example]. */
 const COLUMNS = [
@@ -163,6 +165,12 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
   const [fileName, setFileName] = useState('')
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState(null)
+  const [existing, setExisting] = useState([])
+
+  // Current furniture, to tell which rows create a new item and which update one.
+  useEffect(() => {
+    api('/api/materials').then((response) => { if (response.ok) setExisting(response.materials) })
+  }, [])
 
   async function read(file) {
     if (!file) return
@@ -194,7 +202,7 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
         if (isExample || !Object.entries(item).some(([key, value]) => !['row', 'registeredOn'].includes(key) && value)) return
         parsed.push(item)
       })
-      setRows(parsed)
+      setRows(markDuplicates(numberRows(parsed), [['codMinedu', 'Código patrimonial']]))
       if (!parsed.length) toast('No se encontraron bienes en el archivo.', 'bad')
     } catch (error) {
       console.error(error)
@@ -202,9 +210,22 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
     }
   }
 
+  const checked = useMemo(() => {
+    const byCode = new Map(existing.filter((item) => keyOf(item.codMinedu)).map((item) => [keyOf(item.codMinedu), item]))
+    return rows.map((row) => {
+      const missingFields = [!row.codMinedu && 'código patrimonial', !row.name && 'denominación', !row.category && 'categoría'].filter(Boolean)
+      if (missingFields.length) return { ...row, status: 'incomplete', note: `Falta ${missingFields.join(', ')}` }
+      if (row.duplicate) return { ...row, status: 'duplicate', note: row.duplicate }
+      const match = byCode.get(keyOf(row.codMinedu))
+      return match ? { ...row, status: 'update', note: `Actualiza «${match.name}»` } : { ...row, status: 'new', note: 'Nuevo' }
+    })
+  }, [rows, existing])
+  const valid = checked.filter((row) => row.status === 'new' || row.status === 'update')
+  const rejected = checked.length - valid.length
+
   async function submit() {
     setBusy(true)
-    const response = await api('/api/materials/import', { method: 'POST', body: { items: rows } })
+    const response = await api('/api/materials/import', { method: 'POST', body: { items: valid.map(({ status, note, duplicate, ...row }) => row) } })
     setBusy(false)
     if (!response.ok) return toast(response.error || 'No se pudo importar el mobiliario.', 'bad')
     setResult(response)
@@ -212,14 +233,13 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
     onDone()
   }
 
-  const missing = (row) => !row.name || !row.category
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="size-5 text-primary" /> Importar bienes mobiliarios desde Excel</DialogTitle>
-          <DialogDescription>Usa el formato descargado. Si el código patrimonial ya existe, el bien se actualiza; si no, se registra como nuevo.</DialogDescription>
+          <DialogDescription>Usa el formato descargado. Si el código patrimonial ya existe, el bien se actualiza; si no, se registra como nuevo. No se permiten códigos repetidos en el archivo.</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -235,13 +255,14 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
             <div className="max-h-80 overflow-auto rounded-lg border border-border">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-slate-50 text-foreground/75 dark:bg-muted">
-                  <tr>{['Fila', 'Código patrimonial', 'Denominación', 'Categoría', 'Cantidad', 'Ambiente', 'Estado'].map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 text-left font-bold">{label}</th>)}</tr>
+                  <tr>{['Fila', 'Resultado', 'Código patrimonial', 'Denominación', 'Categoría', 'Cantidad', 'Ambiente', 'Estado'].map((label) => <th key={label} className="whitespace-nowrap px-3 py-2 text-left font-bold">{label}</th>)}</tr>
                 </thead>
                 <tbody>
-                  {rows.slice(0, 200).map((row) => (
-                    <tr key={row.row} className={cn('border-t border-border/70', missing(row) && 'bg-[#fbf1f0] dark:bg-red-500/10')}>
+                  {checked.slice(0, 200).map((row) => (
+                    <tr key={row.row} className={cn('border-t border-border/70', !valid.includes(row) && 'bg-[#fbf1f0] dark:bg-red-500/10')}>
                       <td className="px-3 py-1.5 text-muted-foreground">{row.row}</td>
-                      <td className="px-3 py-1.5">{row.codMinedu || '—'}</td>
+                      <td className="px-3 py-1.5"><ImportStatus row={row} /></td>
+                      <td className={cn('px-3 py-1.5', !row.codMinedu && 'font-semibold text-destructive')}>{row.codMinedu || 'Falta'}</td>
                       <td className={cn('px-3 py-1.5', !row.name && 'font-semibold text-destructive')}>{row.name || 'Falta'}</td>
                       <td className={cn('px-3 py-1.5', !row.category && 'font-semibold text-destructive')}>{row.category || 'Falta'}</td>
                       <td className="px-3 py-1.5">{row.quantity || '1'} {row.unit || 'unidad'}</td>
@@ -253,8 +274,8 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
               </table>
             </div>
             <p className="text-sm text-muted-foreground">
-              {rows.length} bien(es) leídos{rows.length > 200 ? ' (se muestran los primeros 200)' : ''}.
-              {rows.some(missing) && <span className="ml-1 font-semibold text-destructive">{rows.filter(missing).length} fila(s) sin denominación o categoría no se importarán.</span>}
+              {rows.length} bien(es) leídos{rows.length > 200 ? ' (se muestran los primeros 200)' : ''}: {valid.filter((row) => row.status === 'new').length} nuevos, {valid.filter((row) => row.status === 'update').length} actualizan uno existente.
+              {rejected > 0 && <span className="ml-1 font-semibold text-destructive">{rejected} fila(s) repetidas o incompletas no se importarán.</span>}
             </p>
           </>
         )}
@@ -272,7 +293,7 @@ export function ImportMaterialsDialog({ onClose, onDone }) {
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Cerrar</Button>
-          <Button type="button" disabled={!rows.length || busy || Boolean(result)} onClick={submit}><Upload /> {busy ? 'Importando…' : `Importar ${rows.length || ''} bien(es)`}</Button>
+          <Button type="button" disabled={!valid.length || busy || Boolean(result)} onClick={submit}><Upload /> {busy ? 'Importando…' : `Importar ${valid.length || ''} bien(es)`}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -16,6 +16,10 @@ import Dashboard from './pages/campus/Dashboard'
 import { CatalogPage, EquipmentPage } from './pages/campus/Inventory'
 import MaterialsPage from './pages/campus/Materials'
 import ProfilePage from './pages/Profile'
+import SettingsPage from './pages/Settings'
+import PsychologyPanel from './pages/psychology/PsychologyPanel'
+import PsychologyCases from './pages/psychology/Cases'
+import PsychologyAppointments from './pages/psychology/Appointments'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
 import { FixedHoursPage } from './pages/campus/Reports'
@@ -102,7 +106,8 @@ function Gate() {
             <Route path="/admin/reportes" element={<ReportsPage />} />
             <Route path="/admin/asistencia" element={<AttendancePanel />} />
             <Route path="/admin/asistencia/escanear" element={<AttendanceScan />} />
-            <Route path="/admin/asistencia/estudiantes" element={<StudentsPage />} />
+            <Route path="/admin/estudiantes" element={<StudentsPage />} />
+            <Route path="/admin/asistencia/estudiantes" element={<Navigate to="/admin/estudiantes" replace />} />
             <Route path="/admin/asistencia/qr" element={<QrCodesPage />} />
             <Route path="/admin/asistencia/historial" element={<AttendanceHistory />} />
             <Route path="/admin/asistencia/reportes" element={<AttendanceReports />} />
@@ -111,6 +116,10 @@ function Gate() {
             <Route path="/admin/calendario" element={<CalendarPage />} />
             <Route path="/admin/profesores" element={<Teachers />} />
             <Route path="/admin/docentes" element={<TeacherRegistration />} />
+            <Route path="/admin/configuracion" element={<SettingsPage />} />
+            <Route path="/admin/psicologia" element={<PsychologyPanel />} />
+            <Route path="/admin/psicologia/casos" element={<PsychologyCases />} />
+            <Route path="/admin/psicologia/citas" element={<PsychologyAppointments />} />
             <Route path="/admin/profesores/registrar" element={<Navigate to="/admin/docentes" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

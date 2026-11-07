@@ -295,6 +295,9 @@ export function campusRouter() {
     const input = materialInput(req.body)
     const error = validateMaterial(input)
     if (error) return res.status(400).json({ ok: false, error })
+    if (await findByIdentifier(getPool(), 'material_inventory', 'cod_minedu', input.codMinedu)) {
+      return res.status(409).json({ ok: false, error: `El código patrimonial ${input.codMinedu} ya está registrado en otro bien.` })
+    }
     const [created] = await getPool().query(
       `INSERT INTO material_inventory (name, cod_minedu, category, quantity, unit, place, state, notes, level, type, color, dimensions, operational_state, registered_on)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()))`,
@@ -307,6 +310,9 @@ export function campusRouter() {
     const input = materialInput(req.body)
     const error = validateMaterial(input)
     if (error) return res.status(400).json({ ok: false, error })
+    if (await findByIdentifier(getPool(), 'material_inventory', 'cod_minedu', input.codMinedu, req.params.id)) {
+      return res.status(409).json({ ok: false, error: `El código patrimonial ${input.codMinedu} ya está registrado en otro bien.` })
+    }
     const [result] = await getPool().query(
       `UPDATE material_inventory
        SET name = ?, cod_minedu = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?,
@@ -333,9 +339,11 @@ export function campusRouter() {
 
     const errors = []
     const rows = []
+    const repeated = duplicateLines(items, [['codMinedu', 'código patrimonial']])
     items.forEach((raw, index) => {
-      const line = Number(raw.row) || index + 2
-      const problems = []
+      const line = Number(raw.row) || index + 1
+      const problems = [...(repeated.get(line) || [])]
+      if (!String(raw.codMinedu || '').trim()) problems.push('falta el código patrimonial')
       const category = String(raw.category || '').trim() ? byName(categories, raw.category) : ''
       if (!String(raw.category || '').trim()) problems.push('falta la categoría')
       else if (!category) problems.push(`categoría «${raw.category}» no existe`)
@@ -366,9 +374,8 @@ export function campusRouter() {
     try {
       await connection.beginTransaction()
       for (const input of rows) {
-        const [existing] = input.codMinedu
-          ? await connection.query('SELECT id FROM material_inventory WHERE cod_minedu = ? LIMIT 1', [input.codMinedu])
-          : [[]]
+        const existingId = await findByIdentifier(connection, 'material_inventory', 'cod_minedu', input.codMinedu)
+        const existing = existingId ? [{ id: existingId }] : []
         const values = [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, input.level, input.type, input.color, input.dimensions, input.operationalState, input.registeredOn]
         if (existing[0]) {
           await connection.query(
@@ -432,6 +439,8 @@ export function campusRouter() {
   router.post('/api/equipment', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = equipmentInput(req.body)
     if (!input.name || !input.brand) return res.status(400).json({ ok: false, error: 'Nombre y marca son obligatorios.' })
+    const repeatedIdentifier = await equipmentIdentifierInUse(input)
+    if (repeatedIdentifier) return res.status(409).json({ ok: false, error: repeatedIdentifier })
     const code = input.code || await nextCode('equipment', 'EQ-', 3)
     const [duplicate] = await getPool().query('SELECT id FROM equipment WHERE code = ?', [code])
     if (duplicate.length) return res.status(409).json({ ok: false, error: `El código interno ${code} ya está en uso.` })
@@ -465,10 +474,12 @@ export function campusRouter() {
 
     const errors = []
     const rows = []
+    const repeated = duplicateLines(items, [['patrimonial', 'COD MINEDU'], ['serial', 'N.° de serie']])
     items.forEach((raw, index) => {
-      const line = Number(raw.row) || index + 2
-      const problems = []
+      const line = Number(raw.row) || index + 1
+      const problems = [...(repeated.get(line) || [])]
       const input = equipmentInput(raw)
+      if (!input.patrimonial) problems.push('falta el COD MINEDU')
       if (!input.name) problems.push('falta la denominación')
       if (!input.brand) problems.push('falta la marca')
       let categoryId = null
@@ -496,7 +507,7 @@ export function campusRouter() {
         errors.push(`Fila ${line}: ${problems.join(', ')}.`)
         return
       }
-      rows.push({ ...input, categoryId, placeId, responsibleId, physicalState, operationalState })
+      rows.push({ ...input, line, categoryId, placeId, responsibleId, physicalState, operationalState })
     })
 
     const connection = await pool.getConnection()
@@ -507,13 +518,14 @@ export function campusRouter() {
       const [last] = await connection.query("SELECT code FROM equipment WHERE code LIKE 'EQ-%' ORDER BY id DESC LIMIT 1")
       let sequence = last[0] ? Number(String(last[0].code).slice(3)) || 0 : 0
       for (const input of rows) {
-        const keys = []
-        const params = []
-        if (input.patrimonial) { keys.push('patrimonial = ?'); params.push(input.patrimonial) }
-        if (input.serial) { keys.push('serial = ?'); params.push(input.serial) }
-        const [existing] = keys.length
-          ? await connection.query(`SELECT id FROM equipment WHERE ${keys.join(' OR ')} LIMIT 1`, params)
-          : [[]]
+        const byCode = await findByIdentifier(connection, 'equipment', 'patrimonial', input.patrimonial)
+        const bySerial = await findByIdentifier(connection, 'equipment', 'serial', input.serial)
+        if (byCode && bySerial && byCode !== bySerial) {
+          errors.push(`Fila ${input.line}: el COD MINEDU y el N.° de serie pertenecen a equipos distintos.`)
+          continue
+        }
+        const existingId = byCode || bySerial
+        const existing = existingId ? [{ id: existingId }] : []
         const values = equipmentValues(input)
         if (existing[0]) {
           await connection.query(
@@ -537,12 +549,14 @@ export function campusRouter() {
     } finally {
       connection.release()
     }
-    res.json({ ok: true, created, updated, skipped: errors.length, errors: errors.slice(0, 100) })
+    res.json({ ok: true, created, updated, skipped: errors.length, errors: errors.slice(0, 200) })
   }))
 
   router.patch('/api/equipment/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const input = equipmentInput(req.body)
     if (!input.name || !input.brand) return res.status(400).json({ ok: false, error: 'Denominación y marca son obligatorias.' })
+    const repeatedIdentifier = await equipmentIdentifierInUse(input, req.params.id)
+    if (repeatedIdentifier) return res.status(409).json({ ok: false, error: repeatedIdentifier })
     if (input.code) {
       const [duplicate] = await getPool().query('SELECT id FROM equipment WHERE code = ? AND id <> ?', [input.code, req.params.id])
       if (duplicate.length) return res.status(409).json({ ok: false, error: `El código interno ${input.code} ya está en uso.` })
@@ -1031,6 +1045,50 @@ async function migrateInventoryFields(db) {
     'Subdirección primaria', 'Sala de profesores', 'Dirección', 'AULAC1', 'AULACN2', 'Laboratorio primaria', ...classrooms,
   ]
   for (const name of places) await db.query('INSERT IGNORE INTO places (name) VALUES (?)', [name])
+}
+
+/** Comparable form of an identifier (patrimonial code, serial): no spaces, case-insensitive. */
+const identifierKey = (value) => String(value ?? '').replace(/\s+/g, '').toLowerCase()
+
+/** Id of another row of `table` whose `column` has the same identifier, or null. */
+async function findByIdentifier(db, table, column, value, excludeId = null) {
+  const key = identifierKey(value)
+  if (!key) return null
+  const [rows] = await db.query(
+    `SELECT id FROM ${table} WHERE LOWER(REPLACE(${column}, ' ', '')) = ?${excludeId ? ' AND id <> ?' : ''} LIMIT 1`,
+    excludeId ? [key, excludeId] : [key],
+  )
+  return rows[0]?.id ?? null
+}
+
+/** Error message when another equipment already uses this COD MINEDU or serial, else null. */
+async function equipmentIdentifierInUse(input, excludeId = null) {
+  const db = getPool()
+  if (await findByIdentifier(db, 'equipment', 'patrimonial', input.patrimonial, excludeId)) {
+    return `El COD MINEDU ${input.patrimonial} ya está registrado en otro equipo.`
+  }
+  if (await findByIdentifier(db, 'equipment', 'serial', input.serial, excludeId)) {
+    return `El N.° de serie ${input.serial} ya está registrado en otro equipo.`
+  }
+  return null
+}
+
+/** Records of an import whose identifiers repeat inside the same file: line -> problems. */
+function duplicateLines(items, fields) {
+  const seen = Object.fromEntries(fields.map(([field]) => [field, new Map()]))
+  const repeated = new Map()
+  items.forEach((raw, index) => {
+    const line = Number(raw.row) || index + 1
+    const problems = []
+    for (const [field, label] of fields) {
+      const key = identifierKey(raw[field])
+      if (!key) continue
+      if (seen[field].has(key)) problems.push(`${label} repetido en el archivo (fila ${seen[field].get(key)})`)
+      else seen[field].set(key, line)
+    }
+    if (problems.length) repeated.set(line, problems)
+  })
+  return repeated
 }
 
 /** Official patrimonial codes (catálogo SBN/MINEDU) of the institution's assets. */

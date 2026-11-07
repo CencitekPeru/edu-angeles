@@ -3,10 +3,14 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   AlertTriangle,
   BarChart3,
+  CalendarClock,
   CalendarDays,
   ChevronDown,
   ChevronRight,
   Eye,
+  GraduationCap,
+  FolderOpen,
+  HeartHandshake,
   ClipboardList,
   Clock,
   Cpu,
@@ -20,8 +24,10 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  School,
   Settings,
   Shield,
+  SlidersHorizontal,
   UserPlus,
   UserRound,
   Users,
@@ -70,15 +76,32 @@ const adminNav = [
     ],
   },
   {
-    label: 'Asistencia estudiantil',
-    icon: ScanLine,
+    // Student-facing modules; each one is a sub-group of its own.
+    label: 'Gestión Escolar',
+    icon: School,
     children: [
-      { to: '/admin/asistencia', label: 'Panel de asistencia', icon: LayoutGrid, end: true },
-      { to: '/admin/asistencia/escanear', label: 'Escanear QR', icon: ScanLine },
-      { to: '/admin/asistencia/estudiantes', label: 'Estudiantes', icon: UserRound },
-      { to: '/admin/asistencia/qr', label: 'Códigos QR', icon: QrCode },
-      { to: '/admin/asistencia/historial', label: 'Historial de asistencia', icon: History },
-      { to: '/admin/asistencia/reportes', label: 'Reportes', icon: BarChart3 },
+      // Shared by attendance and psychological care.
+      { to: '/admin/estudiantes', label: 'Estudiantes', icon: GraduationCap },
+      {
+        label: 'Asistencia estudiantil',
+        icon: ScanLine,
+        children: [
+          { to: '/admin/asistencia', label: 'Panel de asistencia', icon: LayoutGrid, end: true },
+          { to: '/admin/asistencia/escanear', label: 'Escanear QR', icon: ScanLine },
+          { to: '/admin/asistencia/qr', label: 'Códigos QR', icon: QrCode },
+          { to: '/admin/asistencia/historial', label: 'Historial de asistencia', icon: History },
+          { to: '/admin/asistencia/reportes', label: 'Reportes', icon: BarChart3 },
+        ],
+      },
+      {
+        label: 'Atención psicológica',
+        icon: HeartHandshake,
+        children: [
+          { to: '/admin/psicologia', label: 'Panel psicológico', icon: LayoutGrid, end: true },
+          { to: '/admin/psicologia/casos', label: 'Casos', icon: FolderOpen },
+          { to: '/admin/psicologia/citas', label: 'Citas y sesiones', icon: CalendarClock },
+        ],
+      },
     ],
   },
   {
@@ -88,6 +111,7 @@ const adminNav = [
     children: [
       { to: '/admin/profesores', label: 'Usuarios', icon: Users, end: true },
       { to: '/admin/docentes', label: 'Docentes', icon: UserPlus, end: true },
+      { to: '/admin/configuracion', label: 'Configuración', icon: SlidersHorizontal },
     ],
   },
 ]
@@ -104,18 +128,22 @@ const teacherNav = [
   },
 ]
 
-/** Admin navigation filtered by what the user's role may open. */
-function navFor(user) {
-  return adminNav
-    .map((item) => (item.children ? { ...item, children: item.children.filter((child) => canView(user, child.to)) } : item))
+/** Keeps only what the user's role may open; groups (at any depth) left empty disappear. */
+function prune(items, user) {
+  return items
+    .map((item) => (item.children ? { ...item, children: prune(item.children, user) } : item))
     .filter((item) => (item.children ? item.children.length > 0 : canView(user, item.to)))
 }
 
-function flatItems(items) {
-  return items.flatMap((item) =>
-    item.children ? item.children.map((child) => ({ ...child, section: item.label })) : [item],
-  )
+const navFor = (user) => prune(adminNav, user)
+
+/** Every link of the menu, tagged with the group (or sub-group) it belongs to. */
+function flatItems(items, section = null) {
+  return items.flatMap((item) => (item.children ? flatItems(item.children, item.label) : [{ ...item, section }]))
 }
+
+/** All groups and sub-groups of the menu. */
+const allGroups = (items) => items.flatMap((item) => (item.children ? [item, ...allGroups(item.children)] : []))
 
 const underPath = (path, pathname) => pathname === path || pathname.startsWith(`${path}/`)
 
@@ -125,6 +153,9 @@ function matches(item, pathname) {
   return item.end ? pathname === item.to : underPath(item.to, pathname)
 }
 
+/** Whether a link, or any link inside a group, matches the page. */
+const contains = (item, pathname) => (item.children ? item.children.some((child) => contains(child, pathname)) : matches(item, pathname))
+
 /* Approximate row heights (px) of the expanded sidebar, used to decide how many groups fit open. */
 const ROW_HEIGHT = 44 // top-level link or group header + gap
 const CHILD_HEIGHT = 38 // nested link
@@ -132,18 +163,20 @@ const GROUP_PADDING = 6 // margin above the nested list
 const DIVIDER_HEIGHT = 25 // border + spacing of a divided group
 
 /**
- * Opens groups by default while they fit in the available height: first the group of the
- * current page, then the rest in menu order. Whatever doesn't fit stays collapsed.
+ * Opens top-level groups by default while they fit in the available height: first the group of
+ * the current page, then the rest in menu order. Sub-groups start open only when they hold the
+ * current page. Whatever doesn't fit stays collapsed.
  */
 function groupsThatFit(items, height, pathname) {
   const groups = items.filter((item) => item.children)
   let used = items.reduce((total, item) => total + ROW_HEIGHT + (item.divider ? DIVIDER_HEIGHT : 0), 0)
-  const current = groups.find((group) => group.children.some((child) => matches(child, pathname)))
+  const current = groups.find((group) => contains(group, pathname))
   const ordered = current ? [current, ...groups.filter((group) => group !== current)] : groups
-  const open = Object.fromEntries(groups.map((group) => [group.label, false]))
+  const open = Object.fromEntries(allGroups(items).map((group) => [group.label, contains(group, pathname)]))
+  const openRows = (group) => group.children.reduce((total, child) => total + 1 + (child.children && open[child.label] ? openRows(child) : 0), 0)
   for (const group of ordered) {
-    const cost = GROUP_PADDING + group.children.length * CHILD_HEIGHT
-    if (used + cost > height) continue
+    const cost = GROUP_PADDING + openRows(group) * CHILD_HEIGHT
+    if (used + cost > height) { open[group.label] = false; continue }
     open[group.label] = true
     used += cost
   }
@@ -341,14 +374,17 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
     return () => observer.disconnect()
   }, [collapsed])
 
-  // Entering a page inside a group the user had closed reopens it.
+  // Entering a page inside a group (or sub-group) the user had closed reopens it.
   useEffect(() => {
-    const group = items.find((item) => item.children?.some((child) => matches(child, location.pathname)))
-    if (group) setOverrides((current) => (current[group.label] === false ? { ...current, [group.label]: true } : current))
+    const chain = allGroups(items).filter((group) => contains(group, location.pathname))
+    setOverrides((current) => (chain.some((group) => current[group.label] === false)
+      ? { ...current, ...Object.fromEntries(chain.map((group) => [group.label, true])) }
+      : current))
   }, [location.pathname, items])
 
   const autoGroups = useMemo(() => groupsThatFit(items, navHeight, location.pathname), [items, navHeight, location.pathname])
   const openGroups = { ...autoGroups, ...overrides }
+  const toggleGroup = (label) => setOverrides((current) => ({ ...current, [label]: !openGroups[label] }))
 
   const linkClass = (isActive, nested) =>
     cn(
@@ -358,6 +394,38 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
         ? 'bg-white/[0.12] font-semibold text-white shadow-[inset_3px_0_0_#9db6ea]'
         : 'text-slate-300 hover:bg-white/[0.07] hover:text-white',
     )
+
+  /** Links and sub-groups inside an open group. */
+  const renderChildren = (children) => children.map((child) => {
+    const ChildIcon = child.icon
+    if (child.children) {
+      const subOpen = openGroups[child.label]
+      return (
+        <div key={child.label}>
+          <button
+            type="button"
+            onClick={() => toggleGroup(child.label)}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition-colors hover:bg-white/[0.07]',
+              contains(child, location.pathname) ? 'font-semibold text-white' : 'text-slate-300 hover:text-white',
+            )}
+            aria-expanded={subOpen}
+          >
+            <ChildIcon className="size-4 shrink-0" />
+            <span className="flex-1 truncate text-left">{child.label}</span>
+            <ChevronDown className={cn('size-3.5 shrink-0 text-slate-400 transition-transform', subOpen && 'rotate-180')} />
+          </button>
+          {subOpen && <div className="ml-5 mt-0.5 space-y-0.5 border-l border-white/10 pl-2">{renderChildren(child.children)}</div>}
+        </div>
+      )
+    }
+    return (
+      <NavLink key={child.to} to={child.to} end={child.end} className={() => linkClass(matches(child, location.pathname), true)}>
+        <ChildIcon className="size-4 shrink-0" />
+        <span className="truncate">{child.label}</span>
+      </NavLink>
+    )
+  })
 
   return (
     <div className="flex h-full flex-col px-3 py-4 text-white">
@@ -447,12 +515,12 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                 )
               }
               const groupOpen = openGroups[item.label]
-              const hasActive = item.children.some((child) => matches(child, location.pathname))
+              const hasActive = contains(item, location.pathname)
               return (
                 <div key={item.label} className={item.divider ? 'mt-3 border-t border-white/10 pt-3' : ''}>
                   <button
                     type="button"
-                    onClick={() => setOverrides((current) => ({ ...current, [item.label]: !openGroups[item.label] }))}
+                    onClick={() => toggleGroup(item.label)}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-white/[0.07]',
                       hasActive ? 'font-semibold text-white' : 'text-slate-300 hover:text-white',
@@ -464,17 +532,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                     <ChevronDown className={cn('size-4 shrink-0 text-slate-400 transition-transform', groupOpen && 'rotate-180')} />
                   </button>
                   {groupOpen && (
-                    <div className="mt-1 space-y-0.5 pl-3">
-                      {item.children.map((child) => {
-                        const ChildIcon = child.icon
-                        return (
-                          <NavLink key={child.to} to={child.to} end={child.end} className={() => linkClass(matches(child, location.pathname), true)}>
-                            <ChildIcon className="size-4 shrink-0" />
-                            <span className="truncate">{child.label}</span>
-                          </NavLink>
-                        )
-                      })}
-                    </div>
+                    <div className="mt-1 space-y-0.5 pl-3">{renderChildren(item.children)}</div>
                   )}
                 </div>
               )

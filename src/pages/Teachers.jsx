@@ -32,8 +32,9 @@ const ROLE_OPTIONS = [
   { value: 'admin', label: 'Coordinación CIST', text: 'Acceso completo: registra, edita, aprueba y elimina en todo el sistema.' },
   { value: 'director', label: 'Directora', text: 'Ve todo el panel y exporta reportes, en modo solo consulta.' },
   { value: 'auxiliar', label: 'Auxiliar', text: 'Solo el módulo de asistencia: escanear QR, registro manual y estudiantes.' },
+  { value: 'psicologo', label: 'Psicología', text: 'Solo el módulo de atención psicológica: casos, sesiones y citas (información confidencial).' },
 ]
-const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, teacher: 3 }
+const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, psicologo: 3, teacher: 4 }
 
 function RolePicker({ value, onChange, disabled }) {
   return (
@@ -190,7 +191,7 @@ export default function Teachers() {
           <Input className="pl-9" value={query} placeholder="Buscar por nombre, correo o área..." onChange={(event) => setQuery(event.target.value)} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {[['', 'Todos'], ['admin', 'Coordinación'], ['director', 'Dirección'], ['auxiliar', 'Auxiliares'], ['teacher', 'Docentes']].map(([value, label]) => {
+          {[['', 'Todos'], ['admin', 'Coordinación'], ['director', 'Dirección'], ['auxiliar', 'Auxiliares'], ['psicologo', 'Psicología'], ['teacher', 'Docentes']].map(([value, label]) => {
             const total = value ? users.filter((item) => item.role === value).length : users.length
             return (
               <button key={label} type="button" onClick={() => setRoleFilter(value)} aria-pressed={roleFilter === value}

@@ -110,6 +110,19 @@ export function Pill({ value, className }) {
     Directora: 'brand',
     Auxiliar: 'plain',
     Docente: 'plain',
+    'Psicología': 'plain',
+    // Atención psicológica
+    Abierto: 'brand',
+    'En seguimiento': 'warn',
+    Derivado: 'neutral',
+    Cerrado: 'ok',
+    Programada: 'brand',
+    Realizada: 'ok',
+    'No asistió': 'bad',
+    Cancelada: 'neutral',
+    Alto: 'bad',
+    Medio: 'warn',
+    Bajo: 'ok',
   }
   const labels = {
     registrada: 'Registrada',

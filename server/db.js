@@ -47,7 +47,7 @@ export async function initDb() {
       dni VARCHAR(8) NULL,
       profile_photo VARCHAR(255) NULL,
       password_hash VARCHAR(255) NOT NULL,
-      role ENUM('admin', 'teacher', 'director', 'auxiliar') NOT NULL,
+      role ENUM('admin', 'teacher', 'director', 'auxiliar', 'psicologo') NOT NULL,
       subject VARCHAR(120) NOT NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -55,8 +55,8 @@ export async function initDb() {
   `)
 
   const [roleColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'role'")
-  if (roleColumn[0] && !String(roleColumn[0].Type).includes('director')) {
-    await pool.query("ALTER TABLE users MODIFY role ENUM('admin', 'teacher', 'director', 'auxiliar') NOT NULL")
+  if (roleColumn[0] && !String(roleColumn[0].Type).includes('psicologo')) {
+    await pool.query("ALTER TABLE users MODIFY role ENUM('admin', 'teacher', 'director', 'auxiliar', 'psicologo') NOT NULL")
   }
   // Extended teacher profile (Docentes view).
   for (const [name, type] of [

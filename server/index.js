@@ -8,6 +8,8 @@ import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/l
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
 import { config } from './config.js'
 import { campusRouter, ensureCampus } from './campus.js'
+import { adminRouter } from './admin.js'
+import { ensurePsychology, psychologyRouter } from './psychology.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
@@ -19,6 +21,8 @@ app.use(express.json())
 app.use(campusRouter())
 app.use(attendanceRouter())
 app.use(parentsRouter())
+app.use(psychologyRouter())
+app.use(adminRouter())
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
@@ -332,9 +336,9 @@ function profileInput(body) {
   }
 }
 
-const ROLES = ['admin', 'teacher', 'director', 'auxiliar']
-const STAFF = ['admin', 'director', 'auxiliar']
-const ROLE_SUBJECT = { admin: 'Coordinación académica', director: 'Dirección', auxiliar: 'Auxiliar de educación' }
+const ROLES = ['admin', 'teacher', 'director', 'auxiliar', 'psicologo']
+const STAFF = ['admin', 'director', 'auxiliar', 'psicologo']
+const ROLE_SUBJECT = { admin: 'Coordinación académica', director: 'Dirección', auxiliar: 'Auxiliar de educación', psicologo: 'Psicología' }
 
 app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   const profile = profileInput(req.body)
@@ -477,6 +481,7 @@ if (process.env.NODE_ENV !== 'production') {
     await resetAndSeed()
     await ensureCampus()
     await ensureAttendance()
+    await ensurePsychology()
     await ensureParents()
     res.json({ ok: true })
   }))
@@ -519,6 +524,7 @@ initDb()
   .then(async () => {
     await ensureCampus()
     await ensureAttendance()
+    await ensurePsychology()
     await ensureParents()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)

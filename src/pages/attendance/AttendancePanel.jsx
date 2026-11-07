@@ -14,7 +14,7 @@ const LEVEL_BAR = { Primaria: 'bg-primary', Secundaria: 'bg-primary' }
 
 const QUICK = [
   { to: '/admin/asistencia/escanear', title: 'Escanear QR', text: 'Registrar asistencia', icon: QrCode, tone: 'bg-slate-50 text-primary border-border dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/20' },
-  { to: '/admin/asistencia/estudiantes', title: 'Estudiantes', text: 'Gestionar matrícula', icon: Users, tone: 'bg-slate-50 text-primary border-border dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20' },
+  { to: '/admin/estudiantes', title: 'Estudiantes', text: 'Gestionar matrícula', icon: Users, tone: 'bg-slate-50 text-primary border-border dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20' },
   { to: '/admin/asistencia/historial', title: 'Historial', text: 'Consultar registros', icon: History, tone: 'bg-slate-50 text-primary border-border dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/20' },
   { to: '/admin/asistencia/reportes', title: 'Reportes', text: 'Ver y exportar informes', icon: BarChart3, tone: 'bg-slate-50 text-primary border-border dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20' },
 ]
@@ -70,7 +70,7 @@ export default function AttendancePanel() {
         <StatCard tone="green" icon={CheckCircle2} value={totals.present} label="Presentes" hint={`${pct(totals.present, totals.total)} del total`} />
         <StatCard tone="amber" icon={Clock} value={totals.late} label="Tardanzas" hint={`${pct(totals.late, totals.total)} del total`} />
         <StatCard tone="red" icon={XCircle} value={totals.absent} label="Sin registro / ausentes" hint={`${pct(totals.absent, totals.total)} del total`} />
-        <StatCard tone="blue" icon={Users} value={totals.total} label="Total de estudiantes" hint="Matrícula vigente" to="/admin/asistencia/estudiantes" />
+        <StatCard tone="blue" icon={Users} value={totals.total} label="Total de estudiantes" hint="Matrícula vigente" to="/admin/estudiantes" />
       </div>
 
       <div className="grid gap-5 lg:grid-cols-2">

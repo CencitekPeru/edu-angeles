@@ -232,6 +232,7 @@ export function AppProvider({ children }) {
     markNotifications,
     resetDemo,
     refreshRooms,
+    refresh,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
