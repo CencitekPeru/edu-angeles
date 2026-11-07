@@ -11,6 +11,8 @@ import { Field, Choice } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { PageHeader, Panel, Pill, Table } from './kit'
+import { InventoryTabs } from './Inventory'
+import { PatrimonialCodePicker } from './PatrimonialCodePicker'
 import { Select } from '../attendance/shared'
 import { exportTableXlsx } from '../../lib/exporters'
 import { ImportMaterialsDialog, downloadMaterialsTemplate } from './MaterialsImport'
@@ -178,6 +180,10 @@ export default function MaterialsPage() {
       toast('Selecciona el nivel (Primaria, Secundaria o Ambos).', 'bad')
       return
     }
+    if (!form.codMinedu.trim()) {
+      toast('Selecciona el código patrimonial.', 'bad')
+      return
+    }
     if (!form.place) {
       toast('Selecciona la ubicación del bien.', 'bad')
       return
@@ -231,6 +237,7 @@ export default function MaterialsPage() {
           </>
         )}
       />
+      <InventoryTabs />
       {importing && <ImportMaterialsDialog onClose={() => setImporting(false)} onDone={loadMaterials} />}
 
       <div className="grid gap-3 sm:grid-cols-3">
@@ -315,8 +322,11 @@ export default function MaterialsPage() {
                   <Field label="Nivel *">
                     <Select value={form.level} onChange={(level) => setForm({ ...form, level })} options={[{ value: '', label: 'Seleccione' }, ...['Primaria', 'Secundaria', 'Ambos'].map((value) => ({ value, label: value }))]} required />
                   </Field>
-                  <Field label="Código patrimonial *">
-                    <Input value={form.codMinedu} onChange={(event) => setForm({ ...form, codMinedu: event.target.value })} placeholder="74648119-0473" maxLength={80} required />
+                  <Field label="Código patrimonial *" className="lg:col-span-3">
+                    <PatrimonialCodePicker
+                      value={form.codMinedu}
+                      onChange={(codMinedu, entry) => setForm((current) => ({ ...current, codMinedu, ...(!current.name.trim() && entry ? { name: entry.description } : {}) }))}
+                    />
                   </Field>
                   <Field label="Denominación *" className="sm:col-span-2">
                     <Input autoFocus value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Ej. Silla de madera" maxLength={160} required />

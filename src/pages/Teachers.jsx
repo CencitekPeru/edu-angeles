@@ -31,7 +31,7 @@ function ContactFields({ value, onChange }) {
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Coordinación CIST', text: 'Acceso completo: registra, edita, aprueba y elimina en todo el sistema.' },
   { value: 'director', label: 'Directora', text: 'Ve todo el panel y exporta reportes, en modo solo consulta.' },
-  { value: 'auxiliar', label: 'Auxiliar', text: 'Solo el módulo de asistencia: escanear QR, registro manual, justificaciones y estudiantes.' },
+  { value: 'auxiliar', label: 'Auxiliar', text: 'Solo el módulo de asistencia: escanear QR, registro manual y estudiantes.' },
 ]
 const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, teacher: 3 }
 

@@ -36,6 +36,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { Select } from '../attendance/shared'
+import { PatrimonialCodePicker } from './PatrimonialCodePicker'
 
 export const LEVELS = ['Primaria', 'Secundaria', 'Ambos']
 export const PHYSICAL = ['Bueno', 'Regular', 'Malo']
@@ -286,7 +287,7 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
                 <Section icon={Layers} title="Identificación del bien">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <F label="Código interno"><Input value={form.code} onChange={(e) => set({ code: e.target.value.toUpperCase() })} placeholder={editing ? '' : 'Automático (EQ-…)'} /></F>
-                    <F label="Código patrimonial MINEDU" required error={err('patrimonial')}><Input value={form.patrimonial} onChange={(e) => set({ patrimonial: e.target.value })} placeholder="74644016-0001" /></F>
+                    <F label="Código patrimonial MINEDU" required className="sm:col-span-2" error={err('patrimonial')}><PatrimonialCodePicker value={form.patrimonial} invalid={Boolean(err('patrimonial'))} onChange={(patrimonial, entry) => set({ patrimonial, ...(!form.name.trim() && entry ? { name: entry.description.toUpperCase() } : {}) })} /></F>
                     <F label="Nivel educativo" required error={err('level')}><Select value={form.level} onChange={(level) => set({ level })} options={opts(LEVELS)} /></F>
                     <F label="Denominación" required className="sm:col-span-2 lg:col-span-4" error={err('name')}><Input value={form.name} onChange={(e) => set({ name: e.target.value.toUpperCase() })} placeholder="COMPUTADORA PERSONAL PORTÁTIL" /></F>
                     <F label="Categoría" required error={err('categoryId')}><Select value={form.categoryId} onChange={(categoryId) => set({ categoryId })} options={[{ value: '', label: 'Seleccione' }, ...categories.map((item) => ({ value: String(item.id), label: item.name }))]} /></F>

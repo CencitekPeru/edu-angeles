@@ -10,62 +10,6 @@ import { Choice, Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Panel, Table } from './kit'
 
-export function DocumentsPage() {
-  const { user, toast } = useApp()
-  const [rows, setRows] = useState([])
-  const [equipment, setEquipment] = useState([])
-  const [form, setForm] = useState({ title: '', kind: 'Ficha técnica', equipmentId: '', notes: '' })
-  const [openDoc, setOpenDoc] = useState(false)
-
-  async function load() {
-    const [docs, gear] = await Promise.all([api('/api/documents'), api('/api/equipment')])
-    if (docs.ok) setRows(docs.documents)
-    if (gear.ok) setEquipment(gear.equipment)
-  }
-  useEffect(() => { load() }, [])
-
-  async function save(event) {
-    event.preventDefault()
-    const result = await api('/api/documents', { method: 'POST', body: { ...form, equipmentId: form.equipmentId || null } })
-    if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
-    toast('Documento registrado.')
-    setForm({ title: '', kind: 'Ficha técnica', equipmentId: '', notes: '' })
-    setOpenDoc(false)
-    load()
-  }
-
-  return (
-    <div className="space-y-4">
-      {user.role === 'admin' && <div className="flex justify-end"><Button type="button" onClick={() => setOpenDoc(true)}>Nuevo documento</Button></div>}
-      <Dialog open={openDoc} onOpenChange={setOpenDoc}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nueva documentación técnica</DialogTitle>
-            <DialogDescription>Ficha, protocolo, reporte o manual vinculado a un equipo.</DialogDescription>
-          </DialogHeader>
-          <form onSubmit={save} className="grid gap-3">
-            <Field label="Título"><Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></Field>
-            <Field label="Tipo"><Choice value={form.kind} onChange={(value) => setForm({ ...form, kind: value })} options={['Ficha técnica', 'Protocolo', 'Reporte', 'Manual'].map((item) => ({ value: item, label: item }))} /></Field>
-            <Field label="Equipo"><Choice value={form.equipmentId || 'general'} onChange={(value) => setForm({ ...form, equipmentId: value === 'general' ? '' : value })} options={[{ value: 'general', label: 'General' }, ...equipment.map((item) => ({ value: item.id, label: item.code }))]} /></Field>
-            <Field label="Nota"><Input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></Field>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setOpenDoc(false)}>Cancelar</Button>
-              <Button type="submit">Guardar</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Panel title="Documentos">
-        <Table rows={rows} columns={[
-          { key: 'title', label: 'Título' }, { key: 'kind', label: 'Tipo' },
-          { key: 'equipment_code', label: 'Equipo', render: (row) => row.equipment_code || 'General' },
-          { key: 'notes', label: 'Nota' },
-        ]} />
-      </Panel>
-    </div>
-  )
-}
-
 export function FixedHoursPage() {
   const { user, users, rooms, toast } = useApp()
   const [rows, setRows] = useState([])

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, FileDown, FileUp, ListChecks, MapPin, Monitor, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
+import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -12,12 +12,15 @@ import { cn } from '@/lib/utils'
 import { Filters, PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { ImportInventoryDialog, downloadInventoryTemplate } from './InventoryImport'
 import { EquipmentForm, LEVELS } from './EquipmentForm'
+import { usePatrimonialCodes } from './PatrimonialCodePicker'
+import { exportTableXlsx } from '../../lib/exporters'
 
-/** Tabs shared by the inventory views (tecnológicos, ambientes). */
+/** Tabs shared by the inventory views (tecnológicos, mobiliarios, ambientes). */
 export function InventoryTabs() {
   const { pathname } = useLocation()
   const tabs = [
     { to: '/admin/inventario', label: 'Bienes tecnológicos', icon: Monitor },
+    { to: '/admin/materiales', label: 'Bienes mobiliarios', icon: Package },
     { to: '/admin/catalogo', label: 'Ambientes y categorías', icon: MapPin },
   ]
   return (
@@ -221,17 +224,46 @@ export function EquipmentPage() {
 
   const visible = filters.level ? rows.filter((row) => row.level === filters.level || row.level === 'Ambos') : rows
 
+  function exportData() {
+    if (!visible.length) return toast('No hay bienes para exportar.', 'bad')
+    const applied = [
+      filters.q.trim() && `Búsqueda: «${filters.q.trim()}»`,
+      filters.level && `Nivel: ${filters.level}`,
+      filters.category && `Categoría: ${filters.category}`,
+      filters.place && `Ambiente: ${filters.place}`,
+      filters.state && `Estado: ${filters.state}`,
+    ].filter(Boolean)
+    const count = (state) => visible.filter((row) => row.operationalState === state).length
+    exportTableXlsx({
+      title: 'Inventario de bienes tecnológicos',
+      subtitle: applied.length ? `Filtros: ${applied.join(' · ')}` : 'Todos los bienes registrados',
+      summary: [['Registros', visible.length], ['Operativos', count('Operativo')], ['Con fallas', count('Con fallas')], ['Inoperativos', count('Inoperativo')]],
+      headers: ['Código patrimonial', 'Código interno', 'Denominación', 'Nivel', 'Categoría', 'Tipo', 'Marca', 'Modelo', 'N.° de serie', 'Dirección MAC', 'Procesador', 'Memoria RAM', 'Almacenamiento', 'Sistema operativo', 'Ubicación', 'Responsable', 'Estado físico', 'Estado operativo', 'Fecha de registro'],
+      widths: [18, 14, 30, 12, 18, 14, 14, 16, 18, 18, 20, 12, 16, 18, 24, 24, 13, 15, 14],
+      rows: visible.map((row) => [
+        row.patrimonial || '—', row.code || '—', row.name, row.level || '—', row.category || '—', row.type || '—', row.brand || '—', row.model || '—',
+        row.serial || '—', row.mac || '—', row.processor || '—', row.ram || '—', row.storage || '—', row.os || '—',
+        [row.place, row.placeDetail].filter(Boolean).join(' · ') || 'Sin asignar', row.responsible || '—', row.physicalState || '—', row.operationalState || '—', row.registeredOn || '—',
+      ]),
+    }).then(() => toast('Inventario exportado a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
+  }
+
   return (
     <div className="space-y-4">
       <PageHeader
         icon={Boxes}
         title="Inventario"
         description="Control de bienes tecnológicos y mobiliarios de la institución."
-        actions={admin && (
+        actions={(
           <>
-            <Button type="button" variant="outline" disabled={downloading} onClick={downloadTemplate}><FileDown /> {downloading ? 'Preparando…' : 'Descargar formato'}</Button>
-            <Button type="button" variant="outline" onClick={() => setImporting(true)}><FileUp /> Importar Excel</Button>
-            <Button type="button" onClick={() => setFormRow(null)}><Plus /> Registrar bien</Button>
+            <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
+            {admin && (
+              <>
+                <Button type="button" variant="outline" disabled={downloading} onClick={downloadTemplate}><FileDown /> {downloading ? 'Preparando…' : 'Descargar formato'}</Button>
+                <Button type="button" variant="outline" onClick={() => setImporting(true)}><FileUp /> Importar Excel</Button>
+                <Button type="button" onClick={() => setFormRow(null)}><Plus /> Registrar bien</Button>
+              </>
+            )}
           </>
         )}
       />
@@ -313,6 +345,69 @@ export function EquipmentPage() {
   )
 }
 
+/** Catalog of patrimonial codes (code + description) used by the inventory forms. */
+function PatrimonialCodesPanel({ canEdit }) {
+  const { toast } = useApp()
+  const [codes, reload] = usePatrimonialCodes()
+  const [draft, setDraft] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const items = codes.map((item) => ({ id: item.id, name: `${item.code} · ${item.description}`, code: item.code }))
+
+  async function save(event) {
+    event.preventDefault()
+    setSaving(true)
+    const result = await api('/api/patrimonial-codes', { method: 'POST', body: draft })
+    setSaving(false)
+    if (!result.ok) return toast(result.error || 'No se pudo registrar el código.', 'bad')
+    toast(`Código ${result.code.code} agregado al catálogo.`)
+    setDraft(null)
+    reload()
+  }
+
+  async function remove(item) {
+    const result = await api(`/api/patrimonial-codes/${item.id}`, { method: 'DELETE' })
+    if (!result.ok) return toast(result.error || 'No se pudo quitar el código.', 'bad')
+    toast(`Código ${item.code} quitado del catálogo.`)
+    reload()
+  }
+
+  return (
+    <Panel title="Códigos patrimoniales" action={canEdit && <Button type="button" size="sm" onClick={() => setDraft({ code: '', description: '' })}>Nuevo código</Button>}>
+      <p className="mb-3 text-xs text-muted-foreground">Se eligen al registrar bienes tecnológicos y mobiliarios. {codes.length} códigos en el catálogo.</p>
+      <CatalogList items={items} label="Código" canEdit={canEdit} empty="No hay códigos registrados." onRemove={remove} />
+      <Dialog open={Boolean(draft)} onOpenChange={(next) => { if (!next && !saving) setDraft(null) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader className="border-b border-border/70 pb-4">
+            <div className="flex items-start gap-3 pr-6">
+              <div className="rounded-lg bg-primary/10 p-2 text-primary"><Hash className="size-5" /></div>
+              <div>
+                <DialogTitle>Nuevo código patrimonial</DialogTitle>
+                <DialogDescription className="mt-1">Aparecerá como opción al registrar bienes en el inventario.</DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+          {draft && (
+            <form className="grid gap-4" onSubmit={save}>
+              <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <Field label="Código">
+                  <Input autoFocus inputMode="numeric" value={draft.code} onChange={(event) => setDraft({ ...draft, code: event.target.value })} placeholder="746481190001" maxLength={20} required />
+                </Field>
+                <Field label="Descripción">
+                  <Input value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value.toUpperCase() })} placeholder="SILLA FIJA DE MADERA" maxLength={255} required />
+                </Field>
+              </div>
+              <DialogFooter className="border-t border-border/70 pt-4">
+                <Button type="button" variant="outline" disabled={saving} onClick={() => setDraft(null)}>Cancelar</Button>
+                <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+              </DialogFooter>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+    </Panel>
+  )
+}
+
 export function CatalogPage() {
   const { toast, refreshRooms } = useApp()
   const canEdit = useCan()
@@ -351,7 +446,7 @@ export function CatalogPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader icon={MapPin} title="Ambientes y categorías" description="Catálogos usados para clasificar y ubicar los bienes de la institución." />
+      <PageHeader icon={MapPin} title="Ambientes y categorías" description="Catálogos usados para clasificar, ubicar e identificar los bienes de la institución." />
       <InventoryTabs />
     <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
       <Panel title="Categorías" action={canEdit && <Button type="button" size="sm" onClick={() => { setCategory(''); setKind('categoria') }}>Nueva categoría</Button>}>
@@ -364,6 +459,7 @@ export function CatalogPage() {
         <p className="mb-3 text-xs text-muted-foreground">Estas salas aparecerán en los calendarios y en el formulario de reservas.</p>
         <CatalogList items={rooms} label="Sala" canEdit={canEdit} empty="No hay salas registradas." onRemove={(item) => removeCatalogItem('/api/rooms', item, 'Sala')} />
       </Panel>
+      <PatrimonialCodesPanel canEdit={canEdit} />
       <Dialog open={Boolean(kind)} onOpenChange={(next) => { if (!next) setKind('') }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader className="border-b border-border/70 pb-4">

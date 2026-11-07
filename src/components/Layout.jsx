@@ -10,19 +10,14 @@ import {
   ClipboardList,
   Clock,
   Cpu,
-  FileCheck2,
-  FileText,
-  GraduationCap,
   History,
   Home,
-  Layers,
   LayoutGrid,
   QrCode,
   ScanLine,
   LogOut,
-  Menu,
   Monitor,
-  Package,
+  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
@@ -58,32 +53,11 @@ const adminNav = [
     label: 'Gestión Tecnológica',
     icon: Cpu,
     children: [
-      { to: '/admin/inventario', label: 'Inventario', icon: Monitor },
+      // One entry for the whole inventory; its sections are tabs inside the page.
+      { to: '/admin/inventario', label: 'Inventario', icon: Monitor, also: ['/admin/materiales', '/admin/catalogo'] },
       { to: '/admin/incidencias', label: 'Incidencias', icon: AlertTriangle },
       { to: '/admin/mantenimiento', label: 'Mantenimiento', icon: Wrench },
       { to: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
-    ],
-  },
-  {
-    label: 'Gestión Escolar',
-    icon: GraduationCap,
-    children: [
-      { to: '/admin/materiales', label: 'Bienes mobiliarios', icon: Package },
-      { to: '/admin/catalogo', label: 'Categorías y ambientes', icon: Layers },
-      { to: '/admin/docentes', label: 'Docentes', icon: UserPlus, end: true },
-    ],
-  },
-  {
-    label: 'Asistencia estudiantil',
-    icon: ScanLine,
-    children: [
-      { to: '/admin/asistencia', label: 'Panel de asistencia', icon: LayoutGrid, end: true },
-      { to: '/admin/asistencia/escanear', label: 'Escanear QR', icon: ScanLine },
-      { to: '/admin/asistencia/estudiantes', label: 'Estudiantes', icon: UserRound },
-      { to: '/admin/asistencia/qr', label: 'Códigos QR', icon: QrCode },
-      { to: '/admin/asistencia/historial', label: 'Historial de asistencia', icon: History },
-      { to: '/admin/asistencia/justificaciones', label: 'Justificaciones', icon: FileCheck2 },
-      { to: '/admin/asistencia/reportes', label: 'Reportes', icon: BarChart3 },
     ],
   },
   {
@@ -96,12 +70,24 @@ const adminNav = [
     ],
   },
   {
+    label: 'Asistencia estudiantil',
+    icon: ScanLine,
+    children: [
+      { to: '/admin/asistencia', label: 'Panel de asistencia', icon: LayoutGrid, end: true },
+      { to: '/admin/asistencia/escanear', label: 'Escanear QR', icon: ScanLine },
+      { to: '/admin/asistencia/estudiantes', label: 'Estudiantes', icon: UserRound },
+      { to: '/admin/asistencia/qr', label: 'Códigos QR', icon: QrCode },
+      { to: '/admin/asistencia/historial', label: 'Historial de asistencia', icon: History },
+      { to: '/admin/asistencia/reportes', label: 'Reportes', icon: BarChart3 },
+    ],
+  },
+  {
     label: 'Administración',
     icon: Settings,
     divider: true,
     children: [
       { to: '/admin/profesores', label: 'Usuarios', icon: Users, end: true },
-      { to: '/admin/documentos', label: 'Documentos', icon: FileText },
+      { to: '/admin/docentes', label: 'Docentes', icon: UserPlus, end: true },
     ],
   },
 ]
@@ -131,8 +117,12 @@ function flatItems(items) {
   )
 }
 
+const underPath = (path, pathname) => pathname === path || pathname.startsWith(`${path}/`)
+
+/** Whether `pathname` belongs to a nav item (its own route, or the extra routes listed in `also`). */
 function matches(item, pathname) {
-  return item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`)
+  if (item.also?.some((path) => underPath(path, pathname))) return true
+  return item.end ? pathname === item.to : underPath(item.to, pathname)
 }
 
 /* Approximate row heights (px) of the expanded sidebar, used to decide how many groups fit open. */
@@ -429,10 +419,10 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                         to={item.to}
                         end={item.end}
                         aria-label={item.label}
-                        className={({ isActive }) =>
+                        className={() =>
                           cn(
                             'flex size-10 items-center justify-center rounded-xl transition-colors',
-                            isActive ? 'bg-white/15 text-white shadow-[inset_0_0_0_1px_rgba(157,182,234,0.6)]' : 'text-slate-300 hover:bg-white/10 hover:text-white',
+                            matches(item, location.pathname) ? 'bg-white/15 text-white shadow-[inset_0_0_0_1px_rgba(157,182,234,0.6)]' : 'text-slate-300 hover:bg-white/10 hover:text-white',
                           )
                         }
                       >
@@ -450,7 +440,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
               const Icon = item.icon
               if (!item.children) {
                 return (
-                  <NavLink key={item.to} to={item.to} end={item.end} className={({ isActive }) => linkClass(isActive)}>
+                  <NavLink key={item.to} to={item.to} end={item.end} className={() => linkClass(matches(item, location.pathname))}>
                     <Icon className="size-[18px] shrink-0" />
                     <span className="truncate">{item.label}</span>
                   </NavLink>
@@ -478,7 +468,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                       {item.children.map((child) => {
                         const ChildIcon = child.icon
                         return (
-                          <NavLink key={child.to} to={child.to} end={child.end} className={({ isActive }) => linkClass(isActive, true)}>
+                          <NavLink key={child.to} to={child.to} end={child.end} className={() => linkClass(matches(child, location.pathname), true)}>
                             <ChildIcon className="size-4 shrink-0" />
                             <span className="truncate">{child.label}</span>
                           </NavLink>

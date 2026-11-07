@@ -217,6 +217,26 @@ export function campusRouter() {
     }
   }))
 
+  router.get('/api/patrimonial-codes', requireAuth, wrap(async (_req, res) => {
+    const [rows] = await getPool().query('SELECT id, code, description FROM patrimonial_codes ORDER BY description, code')
+    res.json({ ok: true, codes: rows })
+  }))
+  router.post('/api/patrimonial-codes', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const code = String(req.body.code || '').replace(/\s+/g, '').trim()
+    const description = String(req.body.description || '').replace(/\s+/g, ' ').trim().toUpperCase()
+    if (!/^[0-9-]{6,20}$/.test(code)) return res.status(400).json({ ok: false, error: 'Escribe un código patrimonial válido (solo números).' })
+    if (description.length < 3 || description.length > 255) return res.status(400).json({ ok: false, error: 'Escribe la descripción del bien.' })
+    const [existing] = await getPool().query('SELECT id, description FROM patrimonial_codes WHERE code = ?', [code])
+    if (existing.length) return res.status(409).json({ ok: false, error: `El código ${code} ya está registrado (${existing[0].description}).` })
+    const [result] = await getPool().query('INSERT INTO patrimonial_codes (code, description) VALUES (?, ?)', [code, description])
+    res.status(201).json({ ok: true, code: { id: result.insertId, code, description } })
+  }))
+  router.delete('/api/patrimonial-codes/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const [result] = await getPool().query('DELETE FROM patrimonial_codes WHERE id = ?', [req.params.id])
+    if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'El código ya no existe.' })
+    res.json({ ok: true })
+  }))
+
   router.get('/api/places', requireAuth, wrap(async (_req, res) => {
     const [rows] = await getPool().query('SELECT id, name FROM places ORDER BY name')
     res.json({ ok: true, places: rows })
@@ -1013,6 +1033,59 @@ async function migrateInventoryFields(db) {
   for (const name of places) await db.query('INSERT IGNORE INTO places (name) VALUES (?)', [name])
 }
 
+/** Official patrimonial codes (catálogo SBN/MINEDU) of the institution's assets. */
+const PATRIMONIAL_CODES = [
+  ['746437120137', 'ESCRITORIO DE MADERA 1.20 m X 60 cm X 75 cm'],
+  ['746488310001', 'SILLON GIRATORIO (OTROS)'],
+  ['746459830001', 'MODULO DE COMPUTO (OTROS)'],
+  ['746481190001', 'SILLA FIJA DE MADERA'],
+  ['746406600002', 'ARMARIO DE METAL DE 2 PUERTAS'],
+  ['746441180269', 'ESTANTE DE MADERA 40 cm X 80 m X 1.80 m'],
+  ['746473050136', 'PIZARRA ACRILICA DE 4.20 m X 1.20 m'],
+  ['462252150001', 'ESTABILIZADOR'],
+  ['746466950029', 'PANTALLA ECRAN ELÉCTRICO 1.80 m X 2.20 m'],
+  ['952259820001', 'PARARRAYOS'],
+  ['140400031299', 'SOFTWARE DE CONTROL DE ACCESOS'],
+  ['746450680555', 'MESA DE METAL 50 cm X 60 cm X 68 cm'],
+  ['952278340018', 'SISTEMA DE PROYECCION MULTIMEDIA - PROYECTOR MULTIMEDIA 2700 lm'],
+  ['746481870001', 'SILLA FIJA DE METAL'],
+  ['536499500011', 'VITRINA METALICA PARA INSTRUMENTAL QUIRURGICO - ACERO INOXIDABLE 2 CUERPOS'],
+  ['112283660001', 'VENTILADOR ELECTRICO PARA PARED'],
+  ['746450680116', 'MESA DE METAL DE ACERO INOXIDABLE'],
+  ['746466950001', 'PANTALLA ECRAN'],
+  ['746449320155', 'MESA DE MADERA PARA ALUMNO 1° Y 2° GRADO EDUCACION SECUNDARIA'],
+  ['746449320156', 'MESA DE MADERA PARA ALUMNO 3° A 5° GRADO EDUCACION SECUNDARIA'],
+  ['746481190045', 'SILLA FIJA DE MADERA PARA ALUMNO 3° A 6° GRADO EDUCACION PRIMARIA'],
+  ['746449320153', 'MESA DE MADERA PARA ALUMNO 1° Y 2° GRADO EDUCACION PRIMARIA'],
+  ['746449320154', 'MESA DE MADERA PARA ALUMNO 3° A 6° GRADO EDUCACION PRIMARIA'],
+  ['746449320431', 'MESA DE MADERA PARA ALUMNO 3° A 4° GRADO EDUCACIÓN SECUNDARIA 50 cm x 60 cm x 72 cm'],
+  ['746450680556', 'MESA DE METAL 50 cm X 60 cm X 75 cm'],
+  ['746481190046', 'SILLA FIJA DE MADERA PARA ALUMNO 1° y 2° GRADO EDUCACION SECUNDARIA'],
+  ['746481190150', 'SILLA FIJA DE MADERA PARA ALUMNO 3° y 4° GRADO EDUCACION SECUNDARIA 41 cm x 44 cm x 84 cm'],
+  ['746481190047', 'SILLA FIJA DE MADERA PARA ALUMNO 3° A 5° GRADO EDUCACION SECUNDARIA'],
+  ['746481190149', 'SILLA FIJA DE MADERA PARA ALUMNO DE 5° GRADO EDUCACION SECUNDARIA'],
+  ['676454340030', 'RACK DE TECHO PARA PROYECTOR'],
+  ['952254910008', 'MICROFONO ALAMBRICO'],
+  ['742208530001', 'CAMARA FOTOGRAFICA'],
+  ['746481870091', 'SILLA FIJA DE METAL APILABLE PARA NIÑO'],
+  ['740841000001', 'IMPRESORA LASER'],
+  ['746403890002', 'ARCHIVADOR DE METAL DE 4 GAVETAS'],
+]
+
+/** Catalog of patrimonial codes the inventory forms pick from; seeded once with the institution's list. */
+async function ensurePatrimonialCodes(db) {
+  await db.query(`CREATE TABLE IF NOT EXISTS patrimonial_codes (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(20) NOT NULL UNIQUE,
+    description VARCHAR(255) NOT NULL
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  const [count] = await db.query('SELECT COUNT(*) AS total FROM patrimonial_codes')
+  if (Number(count[0].total)) return
+  for (const [code, description] of PATRIMONIAL_CODES) {
+    await db.query('INSERT IGNORE INTO patrimonial_codes (code, description) VALUES (?, ?)', [code, description])
+  }
+}
+
 export async function ensureCampus() {
   const db = getPool()
   await db.query(`CREATE TABLE IF NOT EXISTS rooms (
@@ -1077,6 +1150,7 @@ export async function ensureCampus() {
     CONSTRAINT fk_equipment_user FOREIGN KEY (responsible_id) REFERENCES users(id)
   ) ENGINE=InnoDB`)
   await migrateInventoryFields(db)
+  await ensurePatrimonialCodes(db)
   await db.query(`CREATE TABLE IF NOT EXISTS equipment_photos (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     equipment_id INT UNSIGNED NOT NULL,

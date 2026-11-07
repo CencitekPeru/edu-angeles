@@ -18,14 +18,13 @@ import MaterialsPage from './pages/campus/Materials'
 import ProfilePage from './pages/Profile'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
-import { DocumentsPage, FixedHoursPage } from './pages/campus/Reports'
+import { FixedHoursPage } from './pages/campus/Reports'
 import { ReportsPage } from './pages/campus/ReportsCenter'
 import AttendancePanel from './pages/attendance/AttendancePanel'
 import AttendanceScan from './pages/attendance/AttendanceScan'
 import StudentsPage from './pages/attendance/Students'
 import QrCodesPage from './pages/attendance/QrCodes'
 import AttendanceHistory from './pages/attendance/AttendanceHistory'
-import JustificationsPage from './pages/attendance/Justifications'
 import AttendanceReports from './pages/attendance/AttendanceReports'
 import ParentLogin from './pages/parents/ParentLogin'
 import ParentPortal from './pages/parents/ParentPortal'
@@ -106,9 +105,7 @@ function Gate() {
             <Route path="/admin/asistencia/estudiantes" element={<StudentsPage />} />
             <Route path="/admin/asistencia/qr" element={<QrCodesPage />} />
             <Route path="/admin/asistencia/historial" element={<AttendanceHistory />} />
-            <Route path="/admin/asistencia/justificaciones" element={<JustificationsPage />} />
             <Route path="/admin/asistencia/reportes" element={<AttendanceReports />} />
-            <Route path="/admin/documentos" element={<DocumentsPage />} />
             <Route path="/admin/horarios" element={<FixedHoursPage />} />
             <Route path="/admin/solicitudes" element={<AdminRequests />} />
             <Route path="/admin/calendario" element={<CalendarPage />} />

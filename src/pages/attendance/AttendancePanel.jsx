@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowRight, BarChart3, CheckCircle2, CircleDashed, Clock, FileCheck2, History, LayoutGrid, QrCode, UserRound, Users, XCircle } from 'lucide-react'
+import { ArrowRight, BarChart3, CheckCircle2, CircleDashed, Clock, History, LayoutGrid, QrCode, UserRound, Users, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -15,7 +15,7 @@ const LEVEL_BAR = { Primaria: 'bg-primary', Secundaria: 'bg-primary' }
 const QUICK = [
   { to: '/admin/asistencia/escanear', title: 'Escanear QR', text: 'Registrar asistencia', icon: QrCode, tone: 'bg-slate-50 text-primary border-border dark:bg-teal-500/10 dark:text-teal-300 dark:border-teal-500/20' },
   { to: '/admin/asistencia/estudiantes', title: 'Estudiantes', text: 'Gestionar matrícula', icon: Users, tone: 'bg-slate-50 text-primary border-border dark:bg-violet-500/10 dark:text-violet-300 dark:border-violet-500/20' },
-  { to: '/admin/asistencia/justificaciones', title: 'Justificaciones', text: 'Registrar y validar', icon: FileCheck2, tone: 'bg-slate-50 text-primary border-border dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/20' },
+  { to: '/admin/asistencia/historial', title: 'Historial', text: 'Consultar registros', icon: History, tone: 'bg-slate-50 text-primary border-border dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/20' },
   { to: '/admin/asistencia/reportes', title: 'Reportes', text: 'Ver y exportar informes', icon: BarChart3, tone: 'bg-slate-50 text-primary border-border dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20' },
 ]
 
