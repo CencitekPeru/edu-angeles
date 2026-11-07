@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Eye,
   GraduationCap,
-  FolderOpen,
   HeartHandshake,
   ClipboardList,
   Clock,
@@ -21,10 +20,12 @@ import {
   ScanLine,
   LogOut,
   Monitor,
+  NotebookPen,
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
   School,
+  Send,
   Settings,
   Shield,
   SlidersHorizontal,
@@ -67,15 +68,6 @@ const adminNav = [
     ],
   },
   {
-    label: 'Reservas',
-    icon: CalendarDays,
-    children: [
-      { to: '/admin/solicitudes', label: 'Solicitudes', icon: ClipboardList },
-      { to: '/admin/calendario', label: 'Calendario', icon: CalendarDays },
-      { to: '/admin/horarios', label: 'Horarios fijos', icon: Clock },
-    ],
-  },
-  {
     // Student-facing modules; each one is a sub-group of its own.
     label: 'Gestión Escolar',
     icon: School,
@@ -97,11 +89,22 @@ const adminNav = [
         label: 'Atención psicológica',
         icon: HeartHandshake,
         children: [
-          { to: '/admin/psicologia', label: 'Panel psicológico', icon: LayoutGrid, end: true },
-          { to: '/admin/psicologia/casos', label: 'Casos', icon: FolderOpen },
-          { to: '/admin/psicologia/citas', label: 'Citas y sesiones', icon: CalendarClock },
+          { to: '/admin/psicologia/atenciones', label: 'Registro de atenciones', icon: NotebookPen },
+          { to: '/admin/psicologia/estudiantes', label: 'Estudiantes atendidos', icon: Users },
+          { to: '/admin/psicologia/seguimiento', label: 'Seguimiento y citas', icon: CalendarClock },
+          { to: '/admin/psicologia/derivaciones', label: 'Derivaciones', icon: Send },
+          { to: '/admin/psicologia/reportes', label: 'Reportes y atención', icon: BarChart3 },
         ],
       },
+    ],
+  },
+  {
+    label: 'Gestión Reservas',
+    icon: CalendarDays,
+    children: [
+      { to: '/admin/solicitudes', label: 'Solicitudes', icon: ClipboardList },
+      { to: '/admin/calendario', label: 'Calendario', icon: CalendarDays },
+      { to: '/admin/horarios', label: 'Horarios fijos', icon: Clock },
     ],
   },
   {

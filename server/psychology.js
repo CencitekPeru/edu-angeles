@@ -11,6 +11,8 @@ export const PSY_RISKS = ['Bajo', 'Medio', 'Alto']
 export const PSY_CASE_STATUS = ['Abierto', 'En seguimiento', 'Derivado', 'Cerrado']
 export const PSY_SESSION_TYPES = ['Individual', 'Familiar', 'Grupal', 'Con docente / tutor']
 export const PSY_SESSION_STATUS = ['Programada', 'Realizada', 'No asistió', 'Cancelada']
+export const PSY_INSTITUTIONS = ['Centro de Salud Mental Comunitario', 'Centro de salud / posta', 'Hospital', 'DEMUNA', 'Centro Emergencia Mujer (CEM)', 'Policía / Fiscalía', 'UGEL', 'Psicólogo o psiquiatra particular', 'Otro']
+export const PSY_REFERRAL_STATUS = ['Pendiente', 'En atención', 'Atendida', 'Sin respuesta']
 
 /**
  * Psychological care: confidential, so only coordination (admin) and the psychology role work in it.
@@ -97,6 +99,43 @@ function mapSession(row) {
   }
 }
 
+const REFERRAL_SELECT = `SELECT r.*, DATE_FORMAT(r.date, '%Y-%m-%d') AS day,
+    c.code AS case_code, c.reason AS case_reason, c.risk_level, s.id AS student_id, s.first_names, s.last_names, s.level, s.grade, s.section,
+    u.name AS created_by_name
+  FROM psych_referrals r
+  JOIN psych_cases c ON c.id = r.case_id
+  JOIN students s ON s.id = c.student_id
+  LEFT JOIN users u ON u.id = r.created_by`
+
+function mapReferral(row) {
+  return {
+    id: row.id,
+    caseId: row.case_id,
+    caseCode: row.case_code,
+    caseReason: row.case_reason,
+    riskLevel: row.risk_level,
+    student: { id: row.student_id, name: `${row.last_names}, ${row.first_names}`, level: row.level, grade: row.grade, section: row.section },
+    date: row.day,
+    institution: row.institution,
+    specialist: row.specialist,
+    reason: row.reason,
+    status: row.status,
+    response: row.response,
+    createdBy: row.created_by_name || '',
+  }
+}
+
+function referralInput(body) {
+  return {
+    date: isDate(body.date) ? body.date : nowLima().date,
+    institution: oneOf(PSY_INSTITUTIONS, body.institution, ''),
+    specialist: text(body.specialist, 160),
+    reason: text(body.reason, 2000),
+    status: oneOf(PSY_REFERRAL_STATUS, body.status, 'Pendiente'),
+    response: text(body.response, 3000),
+  }
+}
+
 function caseInput(body) {
   return {
     studentId: Number(body.studentId) || null,
@@ -137,7 +176,7 @@ export function psychologyRouter() {
   router.use('/api/psychology', requireAuth, psychologyAccess)
 
   router.get('/api/psychology/options', (_req, res) => {
-    res.json({ ok: true, reasons: PSY_REASONS, referrals: PSY_REFERRALS, risks: PSY_RISKS, caseStatus: PSY_CASE_STATUS, sessionTypes: PSY_SESSION_TYPES, sessionStatus: PSY_SESSION_STATUS })
+    res.json({ ok: true, reasons: PSY_REASONS, referrals: PSY_REFERRALS, risks: PSY_RISKS, caseStatus: PSY_CASE_STATUS, sessionTypes: PSY_SESSION_TYPES, sessionStatus: PSY_SESSION_STATUS, institutions: PSY_INSTITUTIONS, referralStatus: PSY_REFERRAL_STATUS })
   })
 
   /** Light student list for the case form (the attendance student API is not open to this role). */
@@ -193,7 +232,8 @@ export function psychologyRouter() {
     const item = await oneCase(req.params.id)
     if (!item) return res.status(404).json({ ok: false, error: 'El caso ya no existe.' })
     const [sessions] = await getPool().query(`${SESSION_SELECT} WHERE x.case_id = ? ORDER BY x.date DESC, x.time DESC`, [req.params.id])
-    res.json({ ok: true, case: item, sessions: sessions.map(mapSession) })
+    const [referrals] = await getPool().query(`${REFERRAL_SELECT} WHERE r.case_id = ? ORDER BY r.date DESC, r.id DESC`, [req.params.id])
+    res.json({ ok: true, case: item, sessions: sessions.map(mapSession), referrals: referrals.map(mapReferral) })
   }))
 
   router.post('/api/psychology/cases', wrap(async (req, res) => {
@@ -286,6 +326,48 @@ export function psychologyRouter() {
     res.json({ ok: true })
   }))
 
+  /** Referrals of a case to an outside institution (health centre, DEMUNA, CEM…) and their follow-up. */
+  router.get('/api/psychology/referrals', wrap(async (req, res) => {
+    const where = []
+    const params = []
+    if (PSY_REFERRAL_STATUS.includes(req.query.status)) { where.push('r.status = ?'); params.push(req.query.status) }
+    const [rows] = await getPool().query(`${REFERRAL_SELECT}${where.length ? ` WHERE ${where.join(' AND ')}` : ''} ORDER BY FIELD(r.status, 'Pendiente', 'En atención', 'Sin respuesta', 'Atendida'), r.date DESC`, params)
+    res.json({ ok: true, referrals: rows.map(mapReferral) })
+  }))
+
+  router.post('/api/psychology/cases/:id/referrals', wrap(async (req, res) => {
+    const input = referralInput(req.body)
+    if (!input.institution) return res.status(400).json({ ok: false, error: 'Selecciona la institución a la que se deriva.' })
+    if (input.reason.length < 3) return res.status(400).json({ ok: false, error: 'Indica el motivo de la derivación.' })
+    const db = getPool()
+    const [cases] = await db.query('SELECT status FROM psych_cases WHERE id = ?', [req.params.id])
+    if (!cases.length) return res.status(404).json({ ok: false, error: 'El caso ya no existe.' })
+    const [created] = await db.query(
+      'INSERT INTO psych_referrals (case_id, date, institution, specialist, reason, status, response, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [req.params.id, input.date, input.institution, input.specialist, input.reason, input.status, input.response, req.user.id],
+    )
+    // An active case that is referred out is marked as such.
+    await db.query("UPDATE psych_cases SET status = 'Derivado' WHERE id = ? AND status IN ('Abierto', 'En seguimiento')", [req.params.id])
+    res.status(201).json({ ok: true, id: created.insertId })
+  }))
+
+  router.patch('/api/psychology/referrals/:id', wrap(async (req, res) => {
+    const input = referralInput(req.body)
+    if (!input.institution || input.reason.length < 3) return res.status(400).json({ ok: false, error: 'Completa la institución y el motivo de la derivación.' })
+    const [result] = await getPool().query(
+      'UPDATE psych_referrals SET date = ?, institution = ?, specialist = ?, reason = ?, status = ?, response = ? WHERE id = ?',
+      [input.date, input.institution, input.specialist, input.reason, input.status, input.response, req.params.id],
+    )
+    if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'La derivación ya no existe.' })
+    res.json({ ok: true })
+  }))
+
+  router.delete('/api/psychology/referrals/:id', wrap(async (req, res) => {
+    const [result] = await getPool().query('DELETE FROM psych_referrals WHERE id = ?', [req.params.id])
+    if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'La derivación ya no existe.' })
+    res.json({ ok: true })
+  }))
+
   return router
 }
 
@@ -322,5 +404,19 @@ export async function ensurePsychology() {
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_psych_sessions_date (date, time),
     CONSTRAINT fk_psych_sessions_case FOREIGN KEY (case_id) REFERENCES psych_cases(id) ON DELETE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  await db.query(`CREATE TABLE IF NOT EXISTS psych_referrals (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    case_id INT UNSIGNED NOT NULL,
+    date DATE NOT NULL,
+    institution VARCHAR(80) NOT NULL,
+    specialist VARCHAR(160) NOT NULL DEFAULT '',
+    reason TEXT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'Pendiente',
+    response TEXT NULL,
+    created_by INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_psych_referrals_status (status),
+    CONSTRAINT fk_psych_referrals_case FOREIGN KEY (case_id) REFERENCES psych_cases(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
 }

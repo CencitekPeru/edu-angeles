@@ -21,7 +21,7 @@ export const CLEAN_GROUPS = {
   inventario: { label: 'Inventario (bienes tecnológicos y mobiliarios)', tables: ['documents', 'equipment_photos', 'equipment', 'material_inventory'], requires: ['soporte'] },
   reservas: { label: 'Reservas y horarios fijos', tables: ['requests', 'fixed_schedules'], requires: [] },
   asistencia: { label: 'Registros de asistencia', tables: ['attendance', 'attendance_audit', 'justifications'], requires: [] },
-  psicologia: { label: 'Atención psicológica (casos y sesiones)', tables: ['psych_sessions', 'psych_cases'], requires: [] },
+  psicologia: { label: 'Atención psicológica (casos, sesiones y derivaciones)', tables: ['psych_referrals', 'psych_sessions', 'psych_cases'], requires: [] },
   estudiantes: { label: 'Estudiantes y apoderados', tables: ['guardian_students', 'guardians', 'students'], requires: ['asistencia', 'psicologia'] },
   notificaciones: { label: 'Notificaciones e historial de reportes', tables: ['notifications', 'report_logs'], requires: [] },
   catalogos: { label: 'Catálogos (categorías, ambientes, salas y códigos patrimoniales)', tables: ['categories', 'places', 'patrimonial_codes', 'rooms'], requires: ['inventario', 'reservas'] },

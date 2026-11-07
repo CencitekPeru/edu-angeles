@@ -17,9 +17,11 @@ import { CatalogPage, EquipmentPage } from './pages/campus/Inventory'
 import MaterialsPage from './pages/campus/Materials'
 import ProfilePage from './pages/Profile'
 import SettingsPage from './pages/Settings'
-import PsychologyPanel from './pages/psychology/PsychologyPanel'
+import PsychologyAttentions from './pages/psychology/Attentions'
 import PsychologyCases from './pages/psychology/Cases'
 import PsychologyAppointments from './pages/psychology/Appointments'
+import PsychologyReferrals from './pages/psychology/Referrals'
+import PsychologyReports from './pages/psychology/Reports'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
 import { FixedHoursPage } from './pages/campus/Reports'
@@ -117,9 +119,15 @@ function Gate() {
             <Route path="/admin/profesores" element={<Teachers />} />
             <Route path="/admin/docentes" element={<TeacherRegistration />} />
             <Route path="/admin/configuracion" element={<SettingsPage />} />
-            <Route path="/admin/psicologia" element={<PsychologyPanel />} />
-            <Route path="/admin/psicologia/casos" element={<PsychologyCases />} />
-            <Route path="/admin/psicologia/citas" element={<PsychologyAppointments />} />
+            <Route path="/admin/psicologia" element={<Navigate to="/admin/psicologia/atenciones" replace />} />
+            <Route path="/admin/psicologia/atenciones" element={<PsychologyAttentions />} />
+            <Route path="/admin/psicologia/estudiantes" element={<PsychologyCases />} />
+            <Route path="/admin/psicologia/seguimiento" element={<PsychologyAppointments />} />
+            <Route path="/admin/psicologia/derivaciones" element={<PsychologyReferrals />} />
+            <Route path="/admin/psicologia/reportes" element={<PsychologyReports />} />
+            {/* Old addresses of the module. */}
+            <Route path="/admin/psicologia/casos" element={<Navigate to="/admin/psicologia/estudiantes" replace />} />
+            <Route path="/admin/psicologia/citas" element={<Navigate to="/admin/psicologia/seguimiento" replace />} />
             <Route path="/admin/profesores/registrar" element={<Navigate to="/admin/docentes" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

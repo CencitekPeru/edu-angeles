@@ -24,7 +24,7 @@ export function homePath(user) {
   if (!user) return '/login'
   if (user.role === 'teacher') return '/panel'
   if (user.role === 'auxiliar') return '/admin/asistencia'
-  if (user.role === 'psicologo') return '/admin/psicologia'
+  if (user.role === 'psicologo') return '/admin/psicologia/atenciones'
   return '/admin'
 }
 

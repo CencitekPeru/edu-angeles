@@ -15,6 +15,18 @@ export const RISKS = ['Bajo', 'Medio', 'Alto']
 export const CASE_STATUS = ['Abierto', 'En seguimiento', 'Derivado', 'Cerrado']
 export const SESSION_TYPES = ['Individual', 'Familiar', 'Grupal', 'Con docente / tutor']
 export const SESSION_STATUS = ['Programada', 'Realizada', 'No asistió', 'Cancelada']
+export const INSTITUTIONS = ['Centro de Salud Mental Comunitario', 'Centro de salud / posta', 'Hospital', 'DEMUNA', 'Centro Emergencia Mujer (CEM)', 'Policía / Fiscalía', 'UGEL', 'Psicólogo o psiquiatra particular', 'Otro']
+export const REFERRAL_STATUS = ['Pendiente', 'En atención', 'Atendida', 'Sin respuesta']
+
+/** Paths of the module's views. */
+export const PSY = {
+  attentions: '/admin/psicologia/atenciones',
+  students: '/admin/psicologia/estudiantes',
+  followUp: '/admin/psicologia/seguimiento',
+  referrals: '/admin/psicologia/derivaciones',
+  reports: '/admin/psicologia/reportes',
+}
+export const caseLink = (id) => `${PSY.students}?caso=${id}`
 
 export const opts = (list, first) => [...(first ? [{ value: '', label: first }] : []), ...list.map((value) => ({ value, label: value }))]
 export const classroom = (student) => `${student.level} · ${student.grade} ${student.section}`
@@ -45,7 +57,7 @@ function Label({ label, children, className }) {
 }
 
 /** Searchable student list (by name, code, DNI or classroom). */
-function StudentPicker({ value, onChange }) {
+export function StudentPicker({ value, onChange }) {
   const [students, setStudents] = useState([])
   const [query, setQuery] = useState('')
   useEffect(() => {
@@ -89,11 +101,11 @@ function StudentPicker({ value, onChange }) {
 const emptyCase = () => ({ studentId: null, openedOn: todayLima(), reason: '', referredBy: '', referrerName: '', riskLevel: 'Bajo', status: 'Abierto', description: '' })
 
 /** Create (no `item`) or edit a case. */
-export function CaseForm({ item, onClose, onSaved }) {
+export function CaseForm({ item, initialStudentId = null, onClose, onSaved }) {
   const { toast } = useApp()
   const [form, setForm] = useState(() => (item
     ? { studentId: item.student.id, openedOn: item.openedOn, reason: item.reason, referredBy: item.referredBy, referrerName: item.referrerName, riskLevel: item.riskLevel, status: item.status, description: item.description || '' }
-    : emptyCase()))
+    : { ...emptyCase(), studentId: initialStudentId }))
   const [saving, setSaving] = useState(false)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
 
@@ -142,11 +154,11 @@ export function CaseForm({ item, onClose, onSaved }) {
 }
 
 /** Create a session for `caseId`, or edit `session`. */
-export function SessionForm({ caseId, caseLabel, session, onClose, onSaved }) {
+export function SessionForm({ caseId, caseLabel, session, defaultStatus = 'Programada', onClose, onSaved }) {
   const { toast } = useApp()
   const [form, setForm] = useState(() => (session
     ? { date: session.date, time: session.time, type: session.type, status: session.status, notes: session.notes || '', agreements: session.agreements || '' }
-    : { date: todayLima(), time: '09:00', type: 'Individual', status: 'Programada', notes: '', agreements: '' }))
+    : { date: todayLima(), time: defaultStatus === 'Realizada' ? new Date().toTimeString().slice(0, 5) : '09:00', type: 'Individual', status: defaultStatus, notes: '', agreements: '' }))
   const [saving, setSaving] = useState(false)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
   const done = form.status === 'Realizada'
@@ -187,6 +199,116 @@ export function SessionForm({ caseId, caseLabel, session, onClose, onSaved }) {
         <DialogFooter>
           <Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancelar</Button>
           <Button type="submit" form="psych-session-form" disabled={saving}>{saving ? 'Guardando…' : 'Guardar'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/** Create a referral for `caseId`, or edit `referral`. */
+export function ReferralForm({ caseId, caseLabel, referral, onClose, onSaved }) {
+  const { toast } = useApp()
+  const [form, setForm] = useState(() => (referral
+    ? { date: referral.date, institution: referral.institution, specialist: referral.specialist || '', reason: referral.reason || '', status: referral.status, response: referral.response || '' }
+    : { date: todayLima(), institution: '', specialist: '', reason: '', status: 'Pendiente', response: '' }))
+  const [saving, setSaving] = useState(false)
+  const set = (patch) => setForm((current) => ({ ...current, ...patch }))
+
+  async function save(event) {
+    event.preventDefault()
+    if (!form.institution) return toast('Selecciona la institución.', 'bad')
+    setSaving(true)
+    const result = referral
+      ? await api(`/api/psychology/referrals/${referral.id}`, { method: 'PATCH', body: form })
+      : await api(`/api/psychology/cases/${caseId}/referrals`, { method: 'POST', body: form })
+    setSaving(false)
+    if (!result.ok) return toast(result.error || 'No se pudo guardar la derivación.', 'bad')
+    toast(referral ? 'Derivación actualizada.' : 'Derivación registrada. El caso queda como «Derivado».')
+    onSaved()
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{referral ? 'Editar derivación' : 'Nueva derivación'}</DialogTitle>
+          <DialogDescription>{caseLabel}</DialogDescription>
+        </DialogHeader>
+        <form id="psych-referral-form" className="grid gap-3 sm:grid-cols-2" onSubmit={save}>
+          <Label label="Fecha *"><Input type="date" value={form.date} onChange={(event) => set({ date: event.target.value })} required /></Label>
+          <Label label="Estado"><Select value={form.status} onChange={(status) => set({ status })} options={opts(REFERRAL_STATUS)} /></Label>
+          <Label label="Institución *"><Select value={form.institution} onChange={(institution) => set({ institution })} options={opts(INSTITUTIONS, 'Seleccione')} /></Label>
+          <Label label="Especialista o área"><Input value={form.specialist} onChange={(event) => set({ specialist: event.target.value })} maxLength={160} placeholder="Ej. Psiquiatría infantil" /></Label>
+          <Label label="Motivo de la derivación *" className="sm:col-span-2">
+            <Textarea rows={3} value={form.reason} onChange={(event) => set({ reason: event.target.value })} maxLength={2000} required placeholder="Por qué se deriva y qué se solicita a la institución" />
+          </Label>
+          <Label label="Respuesta / seguimiento" className="sm:col-span-2">
+            <Textarea rows={3} value={form.response} onChange={(event) => set({ response: event.target.value })} maxLength={3000} placeholder="Contrarreferencia, fecha de atención, indicaciones recibidas…" />
+          </Label>
+        </form>
+        <DialogFooter>
+          <Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancelar</Button>
+          <Button type="submit" form="psych-referral-form" disabled={saving}>{saving ? 'Guardando…' : 'Guardar derivación'}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * «Registrar atención»: pick the student; if they have an active case the attention is added to it,
+ * otherwise the case is opened first and then the attention is recorded.
+ */
+export function RegisterAttention({ onClose, onSaved }) {
+  const [studentId, setStudentId] = useState(null)
+  const [step, setStep] = useState('student')
+  const [activeCase, setActiveCase] = useState(null)
+  const [checking, setChecking] = useState(false)
+
+  async function next() {
+    setChecking(true)
+    const result = await api('/api/psychology/cases')
+    setChecking(false)
+    const open = result.ok ? result.cases.find((item) => item.student.id === studentId && item.status !== 'Cerrado') : null
+    setActiveCase(open || null)
+    setStep(open ? 'session' : 'case')
+  }
+
+  if (step === 'case') {
+    return (
+      <CaseForm
+        initialStudentId={studentId}
+        onClose={onClose}
+        onSaved={async (id) => {
+          const result = await api(`/api/psychology/cases/${id}`)
+          setActiveCase(result.ok ? result.case : { id })
+          setStep('session')
+        }}
+      />
+    )
+  }
+  if (step === 'session' && activeCase) {
+    return (
+      <SessionForm
+        caseId={activeCase.id}
+        caseLabel={activeCase.code ? `Caso ${activeCase.code} · ${activeCase.student.name}` : ''}
+        defaultStatus="Realizada"
+        onClose={onClose}
+        onSaved={onSaved}
+      />
+    )
+  }
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>Registrar atención</DialogTitle>
+          <DialogDescription>Elige al estudiante. Si ya tiene un caso activo, la atención se agrega a ese caso; si no, primero se abre su caso.</DialogDescription>
+        </DialogHeader>
+        <StudentPicker value={studentId} onChange={setStudentId} />
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
+          <Button type="button" disabled={!studentId || checking} onClick={next}>{checking ? 'Revisando…' : 'Continuar'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

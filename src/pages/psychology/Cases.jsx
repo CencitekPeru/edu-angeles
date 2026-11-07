@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarPlus, Eye, FileSpreadsheet, FolderOpen, Pencil, Plus, Trash2 } from 'lucide-react'
+import { CalendarPlus, Eye, FileSpreadsheet, Pencil, Plus, Send, Trash2, Users } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from '@/components/ui/input'
 import { Filters, PageHeader, Panel, Pill, Table } from '../campus/kit'
 import { Select } from '../attendance/shared'
-import { CASE_STATUS, CaseForm, ConfidentialNote, REASONS, RISKS, SessionForm, classroom, opts, shortDate } from './shared'
+import { CASE_STATUS, CaseForm, ConfidentialNote, REASONS, RISKS, ReferralForm, SessionForm, classroom, opts, shortDate } from './shared'
 
 export default function CasesPage() {
   const { toast } = useApp()
@@ -45,7 +45,7 @@ export default function CasesPage() {
   function exportData() {
     if (!visible.length) return toast('No hay casos para exportar.', 'bad')
     exportTableXlsx({
-      title: 'Atención psicológica · Casos',
+      title: 'Atención psicológica · Estudiantes atendidos',
       subtitle: `Exportado el ${new Date().toLocaleDateString('es-PE')} · Información confidencial`,
       summary: [['Casos', visible.length], ['Riesgo alto', visible.filter((item) => item.riskLevel === 'Alto').length]],
       headers: ['Código', 'Estudiante', 'Nivel', 'Grado y sección', 'Apertura', 'Motivo', 'Derivado por', 'Riesgo', 'Estado', 'Sesiones realizadas', 'Última sesión', 'Cierre'],
@@ -58,9 +58,9 @@ export default function CasesPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        icon={FolderOpen}
-        title="Casos de atención psicológica"
-        description="Registro y seguimiento de los estudiantes atendidos por el área de Psicología."
+        icon={Users}
+        title="Estudiantes atendidos"
+        description="Un caso por estudiante con su motivo, nivel de riesgo, sesiones y derivaciones."
         actions={(
           <>
             <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
@@ -70,7 +70,7 @@ export default function CasesPage() {
       />
       <ConfidentialNote />
 
-      <Panel title="Casos registrados" icon={FolderOpen}>
+      <Panel title="Casos por estudiante" icon={Users}>
         <Filters>
           <Input placeholder="Buscar por estudiante, código o grado" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} />
           <Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={[{ value: 'activos', label: 'Casos activos' }, { value: '', label: 'Todos los estados' }, ...opts(CASE_STATUS)]} />
@@ -113,6 +113,7 @@ function CaseDetail({ id, canEdit, onClose, onEdit, onChanged }) {
   const { toast } = useApp()
   const [data, setData] = useState(null)
   const [session, setSession] = useState(undefined)
+  const [referral, setReferral] = useState(undefined)
   const [deleting, setDeleting] = useState(false)
 
   async function load() {
@@ -138,8 +139,17 @@ function CaseDetail({ id, canEdit, onClose, onEdit, onChanged }) {
     onChanged()
   }
 
+  async function removeReferral(entry) {
+    const result = await api(`/api/psychology/referrals/${entry.id}`, { method: 'DELETE' })
+    if (!result.ok) return toast(result.error || 'No se pudo eliminar la derivación.', 'bad')
+    toast('Derivación eliminada.')
+    load()
+    onChanged()
+  }
+
   const item = data?.case
   const closed = item?.status === 'Cerrado'
+  const caseLabel = item ? `Caso ${item.code} · ${item.student.name}` : ''
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
@@ -184,6 +194,28 @@ function CaseDetail({ id, canEdit, onClose, onEdit, onChanged }) {
               {!data.sessions.length && <li className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">Aún no hay sesiones registradas.</li>}
             </ol>
 
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-bold">Derivaciones</h3>
+              {canEdit && <Button type="button" size="sm" variant="outline" onClick={() => setReferral(null)}><Send /> Nueva derivación</Button>}
+            </div>
+            <ul className="space-y-2">
+              {data.referrals.map((entry) => (
+                <li key={entry.id} className="rounded-lg border border-border p-3 text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold">{entry.institution}{entry.specialist && <span className="font-normal text-muted-foreground"> · {entry.specialist}</span>} <span className="font-normal text-muted-foreground">· {shortDate(entry.date)}</span></p>
+                    <div className="flex items-center gap-1">
+                      <Pill value={entry.status} />
+                      {canEdit && <Button type="button" variant="ghost" size="icon" className="size-7" title="Editar derivación" aria-label="Editar derivación" onClick={() => setReferral(entry)}><Pencil /></Button>}
+                      {canEdit && <Button type="button" variant="ghost" size="icon" className="size-7 text-[#9a2f2a]" title="Eliminar derivación" aria-label="Eliminar derivación" onClick={() => removeReferral(entry)}><Trash2 /></Button>}
+                    </div>
+                  </div>
+                  {entry.reason && <p className="mt-1.5 whitespace-pre-wrap">{entry.reason}</p>}
+                  {entry.response && <p className="mt-1.5 whitespace-pre-wrap text-xs"><span className="font-semibold">Respuesta:</span> {entry.response}</p>}
+                </li>
+              ))}
+              {!data.referrals.length && <li className="rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">Sin derivaciones a otras instituciones.</li>}
+            </ul>
+
             <DialogFooter className="gap-2 sm:justify-between">
               {canEdit ? <Button type="button" variant="ghost" className="text-[#9a2f2a]" onClick={() => setDeleting(true)}><Trash2 /> Eliminar caso</Button> : <span />}
               <div className="flex gap-2">
@@ -197,17 +229,26 @@ function CaseDetail({ id, canEdit, onClose, onEdit, onChanged }) {
         {session !== undefined && (
           <SessionForm
             caseId={id}
-            caseLabel={item ? `Caso ${item.code} · ${item.student.name}` : ''}
+            caseLabel={caseLabel}
             session={session}
             onClose={() => setSession(undefined)}
             onSaved={() => { setSession(undefined); load(); onChanged() }}
+          />
+        )}
+        {referral !== undefined && (
+          <ReferralForm
+            caseId={id}
+            caseLabel={caseLabel}
+            referral={referral}
+            onClose={() => setReferral(undefined)}
+            onSaved={() => { setReferral(undefined); load(); onChanged() }}
           />
         )}
         <Dialog open={deleting} onOpenChange={setDeleting}>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
               <DialogTitle>¿Eliminar el caso {item?.code}?</DialogTitle>
-              <DialogDescription>Se eliminarán también sus {data?.sessions.length || 0} sesiones. Esta acción no se puede deshacer; si el caso terminó, es mejor cambiar su estado a «Cerrado».</DialogDescription>
+              <DialogDescription>Se eliminarán también sus {data?.sessions.length || 0} sesiones y {data?.referrals.length || 0} derivaciones. Esta acción no se puede deshacer; si el caso terminó, es mejor cambiar su estado a «Cerrado».</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDeleting(false)}>Cancelar</Button>

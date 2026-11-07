@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { PageHeader, Panel, Pill } from '../campus/kit'
 import { Select, addDaysISO, longDate, todayLima } from '../attendance/shared'
-import { ConfidentialNote, SESSION_STATUS, SessionForm, classroom, opts, shortDate } from './shared'
+import { ConfidentialNote, PSY, SESSION_STATUS, SessionForm, caseLink, classroom, opts, shortDate } from './shared'
 
 /** Monday of the week that contains `iso`. */
 function mondayOf(iso) {
@@ -58,8 +58,8 @@ export default function AppointmentsPage() {
     <div className="space-y-4">
       <PageHeader
         icon={CalendarClock}
-        title="Citas y sesiones"
-        description="Agenda semanal del área de Psicología: citas programadas y sesiones realizadas."
+        title="Seguimiento y citas"
+        description="Agenda semanal de Psicología: programa citas de seguimiento y registra cómo resultaron."
         actions={canEdit && <Button type="button" onClick={() => setScheduling(true)}><CalendarPlus /> Programar cita</Button>}
       />
       <ConfidentialNote />
@@ -92,7 +92,7 @@ export default function AppointmentsPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold">{item.student.name}</span>
                   <span className="block text-xs text-muted-foreground">
-                    {classroom(item.student)} · {item.type} · <Link to={`/admin/psicologia/casos?caso=${item.caseId}`} className="text-primary hover:underline">Caso {item.caseCode}</Link> ({item.reason})
+                    {classroom(item.student)} · {item.type} · <Link to={caseLink(item.caseId)} className="text-primary hover:underline">Caso {item.caseCode}</Link> ({item.reason})
                   </span>
                 </span>
                 <Pill value={item.status} />
@@ -146,7 +146,7 @@ function ScheduleDialog({ onClose, onSaved }) {
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Programar cita</DialogTitle>
-          <DialogDescription>Elige el caso activo del estudiante. Si es una atención nueva, primero registra el caso en «Casos».</DialogDescription>
+          <DialogDescription>Elige el caso activo del estudiante. Si es un estudiante nuevo, primero registra su atención en «Registro de atenciones».</DialogDescription>
         </DialogHeader>
         {cases === null ? <p className="text-sm text-muted-foreground">Cargando…</p> : (
           <Select
@@ -158,7 +158,7 @@ function ScheduleDialog({ onClose, onSaved }) {
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
           {cases?.length === 0
-            ? <Button asChild><Link to="/admin/psicologia/casos">Ir a Casos</Link></Button>
+            ? <Button asChild><Link to={PSY.attentions}>Ir a Registro de atenciones</Link></Button>
             : <Button type="button" disabled={!chosen} onClick={() => setReady(true)}>Continuar</Button>}
         </DialogFooter>
       </DialogContent>

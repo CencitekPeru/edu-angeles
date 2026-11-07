@@ -123,6 +123,9 @@ export function Pill({ value, className }) {
     Alto: 'bad',
     Medio: 'warn',
     Bajo: 'ok',
+    'En atención': 'warn',
+    Atendida: 'ok',
+    'Sin respuesta': 'neutral',
   }
   const labels = {
     registrada: 'Registrada',

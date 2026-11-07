@@ -12,15 +12,25 @@ const MAX_RESULTS = 60
 const normalize = (text) => String(text || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 const digits = (text) => String(text || '').replace(/\D/g, '')
 
-/** Loads the patrimonial code catalog (code + description). */
+/** Loads the patrimonial code catalog (code + description), keeping track of loading and errors. */
 export function usePatrimonialCodes() {
   const [codes, setCodes] = useState([])
+  const [status, setStatus] = useState('loading')
+  const [error, setError] = useState('')
   async function reload() {
+    setStatus('loading')
     const result = await api('/api/patrimonial-codes')
-    if (result.ok) setCodes(result.codes)
+    if (result.ok && Array.isArray(result.codes)) {
+      setCodes(result.codes)
+      setStatus('ready')
+      setError('')
+    } else {
+      setStatus('error')
+      setError(result.error || `El servidor respondió ${result.status || 'sin conexión'}.`)
+    }
   }
   useEffect(() => { reload() }, [])
-  return [codes, reload, setCodes]
+  return [codes, reload, setCodes, status, error]
 }
 
 /**
@@ -31,7 +41,7 @@ export function usePatrimonialCodes() {
 export function PatrimonialCodePicker({ value, onChange, invalid = false, placeholder = 'Buscar o seleccionar código' }) {
   const { toast } = useApp()
   const canAdd = useCan()
-  const [codes, , setCodes] = usePatrimonialCodes()
+  const [codes, reload, setCodes, status, loadError] = usePatrimonialCodes()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [adding, setAdding] = useState(null)
@@ -72,7 +82,17 @@ export function PatrimonialCodePicker({ value, onChange, invalid = false, placeh
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) { setQuery(''); setAdding(null) } }}>
+    <Popover
+      modal
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next)
+        if (!next) return
+        setQuery('')
+        setAdding(null)
+        if (status === 'error') reload()
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -129,7 +149,7 @@ export function PatrimonialCodePicker({ value, onChange, invalid = false, placeh
                 }}
               />
             </div>
-            <ul className="max-h-72 overflow-y-auto p-1" role="listbox" aria-label="Códigos patrimoniales">
+            <ul className="max-h-72 overflow-y-auto overscroll-contain p-1" role="listbox" aria-label="Códigos patrimoniales">
               {results.slice(0, MAX_RESULTS).map((item) => (
                 <li key={item.id}>
                   <button
@@ -147,7 +167,15 @@ export function PatrimonialCodePicker({ value, onChange, invalid = false, placeh
                   </button>
                 </li>
               ))}
-              {!results.length && <li className="px-3 py-4 text-center text-sm text-muted-foreground">{codes.length ? 'Sin coincidencias.' : 'No hay códigos registrados.'}</li>}
+              {status === 'loading' && !codes.length && <li className="px-3 py-4 text-center text-sm text-muted-foreground">Cargando códigos…</li>}
+              {status === 'error' && !codes.length && (
+                <li className="space-y-2 px-3 py-4 text-center text-sm">
+                  <p className="font-semibold text-destructive">No se pudieron cargar los códigos patrimoniales.</p>
+                  <p className="text-xs text-muted-foreground">{loadError}</p>
+                  <Button type="button" size="sm" variant="outline" onClick={reload}>Reintentar</Button>
+                </li>
+              )}
+              {status === 'ready' && !results.length && <li className="px-3 py-4 text-center text-sm text-muted-foreground">{codes.length ? 'Sin coincidencias.' : 'No hay códigos registrados.'}</li>}
               {results.length > MAX_RESULTS && <li className="px-3 py-2 text-center text-xs text-muted-foreground">Mostrando {MAX_RESULTS} de {results.length}. Escribe para afinar la búsqueda.</li>}
             </ul>
             {canAdd && !exact && (
