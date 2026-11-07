@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
+import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileText, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -13,7 +13,7 @@ import { Filters, PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { ImportInventoryDialog, downloadInventoryTemplate } from './InventoryImport'
 import { EquipmentForm, LEVELS } from './EquipmentForm'
 import { usePatrimonialCodes } from './PatrimonialCodePicker'
-import { exportTableXlsx } from '../../lib/exporters'
+import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
 
 /** Tabs shared by the inventory views (tecnológicos, mobiliarios, ambientes). */
 export function InventoryTabs() {
@@ -224,6 +224,38 @@ export function EquipmentPage() {
 
   const visible = filters.level ? rows.filter((row) => row.level === filters.level || row.level === 'Ambos') : rows
 
+  /** Filters in use, described for the export headers. */
+  const appliedFilters = () => [
+    filters.q.trim() && `Búsqueda: «${filters.q.trim()}»`,
+    filters.level && `Nivel: ${filters.level}`,
+    filters.category && `Categoría: ${filters.category}`,
+    filters.place && `Ambiente: ${filters.place}`,
+    filters.state && `Estado: ${filters.state}`,
+  ].filter(Boolean)
+
+  function exportPdf() {
+    if (!visible.length) return toast('No hay bienes para exportar.', 'bad')
+    const applied = appliedFilters()
+    const withSerial = visible.filter((row) => String(row.serial || '').trim()).length
+    exportTablePdf({
+      title: 'Inventario de bienes tecnológicos',
+      subtitle: applied.length ? `Filtros: ${applied.join(' · ')}` : 'Todos los bienes registrados',
+      summary: [['Registros', visible.length], ['Con serie', withSerial], ['Sin serie', visible.length - withSerial]],
+      headers: ['Nivel', 'COD MINEDU', 'Denominación', 'Marca', 'Modelo', 'Tipo', 'Color', 'Serie', 'Dimensiones', 'Estado operativo', 'Estado físico', 'Observación', 'Verificación de serie'],
+      rows: visible.map((row) => [
+        row.level || '—', row.patrimonial || '—', row.name, row.brand || '—', row.model || '—', row.type || '—', row.color || '—',
+        row.serial || '—', row.dimensions || '—', row.operationalState || '—', row.physicalState || '—', row.notes || '—',
+        String(row.serial || '').trim() ? 'SI' : 'NO',
+      ]),
+      fontSize: 6.5,
+      columnStyles: {
+        0: { cellWidth: 15 }, 1: { cellWidth: 22 }, 2: { cellWidth: 33 }, 3: { cellWidth: 16 }, 4: { cellWidth: 17 }, 5: { cellWidth: 15 },
+        6: { cellWidth: 13 }, 7: { cellWidth: 21 }, 8: { cellWidth: 19 }, 9: { cellWidth: 17 }, 10: { cellWidth: 14 },
+        12: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
+      },
+    }).then(() => toast('Inventario exportado a PDF.')).catch(() => toast('No se pudo generar el PDF.', 'bad'))
+  }
+
   function exportData() {
     if (!visible.length) return toast('No hay bienes para exportar.', 'bad')
     const applied = [
@@ -257,6 +289,7 @@ export function EquipmentPage() {
         actions={(
           <>
             <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
+            <Button type="button" variant="outline" onClick={exportPdf}><FileText className="text-[#b4413c]" /> Exportar PDF</Button>
             {admin && (
               <>
                 <Button type="button" variant="outline" disabled={downloading} onClick={downloadTemplate}><FileDown /> {downloading ? 'Preparando…' : 'Descargar formato'}</Button>

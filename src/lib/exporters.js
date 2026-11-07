@@ -6,8 +6,11 @@ function slug(text) {
 
 const stamp = () => new Date().toISOString().slice(0, 10)
 
-/** Exports a simple table to a landscape A4 PDF with the school header. */
-export async function exportTablePdf({ title, subtitle = '', headers, rows, summary = [] }) {
+/**
+ * Exports a simple table to a landscape A4 PDF with the school header.
+ * Wide tables can pass a smaller `fontSize` and per-column `columnStyles` (jspdf-autotable format).
+ */
+export async function exportTablePdf({ title, subtitle = '', headers, rows, summary = [], fontSize = 8, columnStyles = {} }) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const width = doc.internal.pageSize.getWidth()
@@ -36,8 +39,9 @@ export async function exportTablePdf({ title, subtitle = '', headers, rows, summ
     theme: 'grid',
     head: [headers],
     body: rows.map((row) => row.map((cell) => String(cell ?? '—'))),
-    styles: { font: 'helvetica', fontSize: 8, cellPadding: 2, textColor: [31, 41, 55], overflow: 'linebreak' },
+    styles: { font: 'helvetica', fontSize, cellPadding: fontSize < 8 ? 1.5 : 2, textColor: [31, 41, 55], overflow: 'linebreak', valign: 'middle' },
     headStyles: { fillColor: [29, 78, 216], textColor: [255, 255, 255], fontStyle: 'bold' },
+    columnStyles,
     alternateRowStyles: { fillColor: [245, 248, 253] },
   })
   const pages = doc.getNumberOfPages()
