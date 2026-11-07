@@ -263,11 +263,52 @@ export default function CalendarPage() {
   )
 }
 
+/**
+ * Lays out one day's events so overlapping ones sit side by side instead of on top of each other.
+ * Events that overlap (directly or through a chain) form a cluster; inside it each event takes the
+ * first free lane, and every event of the cluster shares the cluster's lane count for its width.
+ */
+function layoutDay(items) {
+  const sorted = items
+    .map((item) => {
+      const start = Math.max(DAY_START, toMinutes(item.startTime))
+      const end = Math.min(DAY_END, Math.max(toMinutes(item.endTime), start + 15))
+      return { item, start, end }
+    })
+    .sort((a, b) => a.start - b.start || b.end - a.end)
+  const placed = []
+  let cluster = []
+  let clusterEnd = -1
+  const close = () => {
+    const lanes = Math.max(...cluster.map((entry) => entry.lane)) + 1
+    for (const entry of cluster) placed.push({ ...entry, lanes })
+    cluster = []
+  }
+  for (const entry of sorted) {
+    if (cluster.length && entry.start >= clusterEnd) close()
+    const laneEnds = []
+    for (const other of cluster) laneEnds[other.lane] = Math.max(laneEnds[other.lane] ?? -1, other.end)
+    let lane = laneEnds.findIndex((end) => end <= entry.start)
+    if (lane === -1) lane = laneEnds.length
+    cluster.push({ ...entry, lane })
+    clusterEnd = Math.max(clusterEnd, entry.end)
+  }
+  if (cluster.length) close()
+  return placed
+}
+
 function TimeGrid({ days, events, users, today, onOpen, onReserve }) {
   const height = ((DAY_END - DAY_START) / 60) * HOUR_HEIGHT
+  const byDay = useMemo(
+    () => Object.fromEntries(days.map((date) => [date, layoutDay(events.filter((item) => item.date === date))])),
+    [days, events],
+  )
+  // Give each day enough width for its busiest moment so side-by-side blocks stay readable.
+  const maxLanes = Math.max(1, ...Object.values(byDay).flatMap((list) => list.map((entry) => entry.lanes)))
+  const minWidth = 90 + days.length * Math.max(110, maxLanes * 96)
   return (
     <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-      <div className="min-w-[640px]" style={{ display: 'grid', gridTemplateColumns: `90px repeat(${days.length}, minmax(0, 1fr))` }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `90px repeat(${days.length}, minmax(0, 1fr))`, minWidth }}>
         <div className="border-b border-r border-border bg-slate-50 px-2 py-2 text-center text-sm font-bold dark:bg-muted/60">Hora</div>
         {days.map((date) => {
           const label = dayHeader(date)
@@ -293,23 +334,29 @@ function TimeGrid({ days, events, users, today, onOpen, onReserve }) {
             onClick={() => onReserve?.(date)}
           >
             {HOURS.map((mins, index) => <div key={mins} className="absolute inset-x-0 border-b border-border/60" style={{ top: index * HOUR_HEIGHT, height: HOUR_HEIGHT }} />)}
-            {events.filter((item) => item.date === date).map((item) => {
-              const top = ((toMinutes(item.startTime) - DAY_START) / 60) * HOUR_HEIGHT
-              const blockHeight = Math.max(26, ((toMinutes(item.endTime) - toMinutes(item.startTime)) / 60) * HOUR_HEIGHT - 4)
+            {byDay[date].map(({ item, start, end, lane, lanes }) => {
+              const top = ((start - DAY_START) / 60) * HOUR_HEIGHT
+              const blockHeight = Math.max(24, ((end - start) / 60) * HOUR_HEIGHT - 4)
               const Icon = BLOCK_ICON[item.kind]
               const teacher = item.kind === 'fixed' ? item.teacherName || personName(users, item.teacherId) : personName(users, item.teacherId)
+              const short = blockHeight < 44
               return (
                 <button
                   key={item.id}
                   type="button"
                   onClick={(event) => { event.stopPropagation(); onOpen(item) }}
-                  className={cn('absolute inset-x-1 overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight shadow-xs transition hover:z-10 hover:shadow-md', BLOCK[item.kind])}
-                  style={{ top: top + 2, height: blockHeight }}
-                  title={`${item.grade} ${item.section} – ${item.purpose} · ${teacher}`}
+                  className={cn('absolute flex flex-col items-stretch justify-start overflow-hidden rounded-md border px-2 py-1 text-left text-[11px] leading-tight shadow-xs transition hover:z-10 hover:shadow-md', BLOCK[item.kind])}
+                  style={{
+                    top: top + 2,
+                    height: blockHeight,
+                    left: `calc(${(lane / lanes) * 100}% + 3px)`,
+                    width: `calc(${100 / lanes}% - 6px)`,
+                  }}
+                  title={`${item.grade} ${item.section} – ${item.purpose} · ${teacher} · ${item.startTime} – ${item.endTime}`}
                 >
-                  <span className="flex items-center gap-1 font-bold"><Icon className={cn('size-3.5 shrink-0', ICON_TONE[item.kind])} /><span className="truncate">{item.grade} {item.section} – {item.purpose}</span></span>
-                  <span className="block truncate">Prof. {teacher}</span>
-                  <span className="block">{item.startTime} – {item.endTime}</span>
+                  <span className="flex min-w-0 items-center gap-1 font-bold"><Icon className={cn('size-3.5 shrink-0', ICON_TONE[item.kind])} /><span className="truncate">{item.grade} {item.section} – {item.purpose}</span></span>
+                  {!short && <span className="block truncate">Prof. {teacher}</span>}
+                  {!short && <span className="block truncate">{item.startTime} – {item.endTime}</span>}
                 </button>
               )
             })}
