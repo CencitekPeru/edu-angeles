@@ -373,25 +373,23 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
     <div className="flex h-full flex-col px-3 py-4 text-white">
       {/* Brand */}
       {collapsed ? (
-        <div className="mb-5 flex flex-col items-center gap-2">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="flex size-11 items-center justify-center overflow-hidden rounded-xl bg-white p-0.5"
-            aria-label="Expandir menú"
-            title="Expandir menú"
-          >
-            <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-full rounded-lg object-contain" />
-          </button>
+        <div className="mb-4 flex justify-center">
           {onToggle && (
-            <button
-              type="button"
-              onClick={onToggle}
-              className="flex size-8 items-center justify-center rounded-lg text-slate-400 hover:bg-white/10 hover:text-white"
-              aria-label="Expandir menú"
-            >
-              <PanelLeftOpen className="size-4" />
-            </button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onToggle}
+                  className="flex size-10 items-center justify-center rounded-xl text-slate-300 hover:bg-white/10 hover:text-white"
+                  aria-label="Expandir menú"
+                >
+                  <PanelLeftOpen className="size-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right" className={tooltipClass}>
+                <p className="font-semibold">Expandir menú</p>
+              </TooltipContent>
+            </Tooltip>
           )}
         </div>
       ) : (
@@ -419,7 +417,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
       )}
 
       {/* Navigation */}
-      <nav ref={navRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto">
+      <nav ref={navRef} className={cn('min-h-0 flex-1 space-y-1 overflow-y-auto', collapsed && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden')}>
         {collapsed
           ? flatItems(items).map((item) => {
               const Icon = item.icon
