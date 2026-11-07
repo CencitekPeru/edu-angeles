@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   Download,
   Eye,
+  FileSpreadsheet,
   Filter,
   GraduationCap,
   Info,
@@ -16,6 +17,7 @@ import {
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
+import { exportTableXlsx } from '../../lib/exporters'
 import { PageHeader, StatCard } from '../campus/kit'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -72,7 +74,7 @@ async function downloadTemplate() {
   sheet.columns = TEMPLATE_HEADERS.map((header) => ({ header, width: header === 'Apellidos' || header === 'Nombres' || header === 'Apoderado' ? 26 : 14 }))
   sheet.addRow(['71234567', 'Huamán Rojas', 'Daniel', 'Secundaria', '5', 'A', 'Rosa Rojas', '41234567', '987654321'])
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
-  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } }
+  sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }
   const buffer = await workbook.xlsx.writeBuffer()
   const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
   const link = document.createElement('a')
@@ -109,6 +111,33 @@ export default function StudentsPage() {
     reload()
   }
 
+  function exportData() {
+    if (!students.length) return toast('No hay estudiantes para exportar.', 'bad')
+    const applied = [
+      filters.q.trim() && `Búsqueda: «${filters.q.trim()}»`,
+      filters.level && `Nivel: ${filters.level}`,
+      filters.grade && `Grado: ${filters.grade}`,
+      filters.section && `Sección: ${filters.section}`,
+    ].filter(Boolean)
+    exportTableXlsx({
+      title: 'Relación de estudiantes',
+      subtitle: applied.length ? `Filtros: ${applied.join(' · ')}` : 'Todos los estudiantes activos',
+      summary: [['Estudiantes', students.length], ['Primaria', students.filter((item) => item.level === 'Primaria').length], ['Secundaria', students.filter((item) => item.level === 'Secundaria').length]],
+      headers: ['Código', 'DNI', 'Apellidos', 'Nombres', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono', 'QR activo'],
+      widths: [12, 12, 26, 24, 12, 8, 9, 28, 14, 14, 10],
+      rows: students.map((item) => [item.code, item.dni || '—', item.lastNames, item.firstNames, item.level, item.grade, item.section, item.guardian || '—', item.guardianDni || '—', item.phone || '—', item.qrActive ? 'Sí' : 'No']),
+    }).then(() => toast('Estudiantes exportados a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
+  }
+
+  async function getTemplate() {
+    try {
+      await downloadTemplate()
+      toast('Plantilla descargada. Complétala y usa «Importar (Excel)».')
+    } catch {
+      toast('No se pudo generar la plantilla.', 'bad')
+    }
+  }
+
   const allOnPage = rows.length > 0 && rows.every((row) => selected.includes(row.id))
 
   return (
@@ -120,6 +149,8 @@ export default function StudentsPage() {
         actions={
           <>
             <DateChip prefix="Hoy: " />
+            <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
+            {canEdit && <Button type="button" variant="outline" onClick={getTemplate}><Download /> Descargar plantilla</Button>}
             {canEdit && <Button type="button" variant="outline" onClick={() => setImportOpen(true)}><Upload /> Importar (Excel)</Button>}
             {canEdit && <Button type="button" onClick={() => setEditing(EMPTY)}><UserPlus /> Registrar estudiante</Button>}
           </>
