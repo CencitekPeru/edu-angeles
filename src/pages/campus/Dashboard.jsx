@@ -17,10 +17,8 @@ import {
 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
-import { SCHOOL } from '../../lib/school'
 import { personName } from '../../lib/reservations'
 import { LAB, todayISO, toMinutes } from '../../lib/time'
-import schoolLogo from '../../assets/logo-colegio.jpg'
 import { StatusBadge } from '../../components/ui'
 import { cn } from '@/lib/utils'
 import { Panel, StatCard } from './kit'
@@ -97,19 +95,8 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-5">
-      {/* Hero */}
-      <div className="flex flex-wrap items-center justify-between gap-5 px-1 pt-1">
-        <div className="flex flex-wrap items-center gap-5">
-          <img src={schoolLogo} alt={`Escudo de ${SCHOOL.name}`} className="size-20 shrink-0 rounded-xl object-contain mix-blend-multiply dark:mix-blend-normal" />
-          <div className="border-l-2 border-primary pl-5 leading-tight">
-            <p className="text-sm font-extrabold uppercase tracking-wide text-foreground">{SCHOOL.name}</p>
-            <p className="text-[40px] font-black leading-none tracking-tight text-primary">CIST</p>
-            <p className="mt-0.5 text-sm font-medium text-muted-foreground">Plataforma Tecnológica</p>
-          </div>
-          <p className="hidden max-w-[230px] border-l border-border pl-5 text-sm leading-relaxed text-muted-foreground md:block">
-            Gestión, control y soporte de los recursos tecnológicos de la institución.
-          </p>
-        </div>
+      {/* Fecha */}
+      <div className="flex justify-end px-1 pt-1">
         <div className="flex items-center gap-2.5 rounded-lg border border-border bg-card px-4 py-2.5 text-sm font-semibold text-foreground shadow-xs">
           <CalendarDays className="size-[18px] text-primary" />
           <span>{longDateWithYear(today)}</span>

@@ -301,6 +301,83 @@ export function campusRouter() {
     res.json({ ok: true })
   }))
 
+  router.post('/api/materials/import', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 3000) : []
+    if (!items.length) return res.status(400).json({ ok: false, error: 'El archivo no tiene bienes para importar.' })
+    const pool = getPool()
+    const [categories] = await pool.query('SELECT name FROM categories')
+    const [places] = await pool.query('SELECT name FROM places')
+    const norm = (value) => String(value || '').trim().toLowerCase()
+    const byName = (list, value) => list.find((item) => norm(item.name) === norm(value))?.name
+    const pick = (list, value, fallback) => list.find((item) => norm(item) === norm(value)) || (String(value || '').trim() ? null : fallback)
+
+    const errors = []
+    const rows = []
+    items.forEach((raw, index) => {
+      const line = Number(raw.row) || index + 2
+      const problems = []
+      const category = String(raw.category || '').trim() ? byName(categories, raw.category) : ''
+      if (!String(raw.category || '').trim()) problems.push('falta la categoría')
+      else if (!category) problems.push(`categoría «${raw.category}» no existe`)
+      const place = String(raw.place || '').trim() ? byName(places, raw.place) : ''
+      if (String(raw.place || '').trim() && !place) problems.push(`ambiente «${raw.place}» no existe`)
+      const level = pick(['Primaria', 'Secundaria', 'Ambos'], raw.level, '')
+      if (level === null) problems.push(`nivel «${raw.level}» no válido`)
+      const state = pick(['Bueno', 'Regular', 'Malo'], raw.state, 'Bueno')
+      if (!state) problems.push(`estado físico «${raw.state}» no válido`)
+      const operationalState = pick(['Operativo', 'Con fallas', 'Inoperativo'], raw.operationalState, 'Operativo')
+      if (!operationalState) problems.push(`estado operativo «${raw.operationalState}» no válido`)
+      if (raw.registeredOn && !/^\d{4}-\d{2}-\d{2}$/.test(String(raw.registeredOn))) problems.push('fecha de registro no válida')
+      const input = materialInput({ ...raw, category, place, level, state, operationalState })
+      if (!problems.length) {
+        const error = validateMaterial(input)
+        if (error) problems.push(error.replace(/\.$/, '').toLowerCase())
+      }
+      if (problems.length) {
+        errors.push(`Fila ${line}: ${problems.join(', ')}.`)
+        return
+      }
+      rows.push(input)
+    })
+
+    const connection = await pool.getConnection()
+    let created = 0
+    let updated = 0
+    try {
+      await connection.beginTransaction()
+      for (const input of rows) {
+        const [existing] = input.codMinedu
+          ? await connection.query('SELECT id FROM material_inventory WHERE cod_minedu = ? LIMIT 1', [input.codMinedu])
+          : [[]]
+        const values = [input.name, input.codMinedu, input.category, input.quantity, input.unit, input.place, input.state, input.notes, input.level, input.type, input.color, input.dimensions, input.operationalState, input.registeredOn]
+        if (existing[0]) {
+          await connection.query(
+            `UPDATE material_inventory
+             SET name = ?, cod_minedu = ?, category = ?, quantity = ?, unit = ?, place = ?, state = ?, notes = ?,
+                 level = ?, type = ?, color = ?, dimensions = ?, operational_state = ?, registered_on = COALESCE(?, registered_on)
+             WHERE id = ?`,
+            [...values, existing[0].id],
+          )
+          updated += 1
+        } else {
+          await connection.query(
+            `INSERT INTO material_inventory (name, cod_minedu, category, quantity, unit, place, state, notes, level, type, color, dimensions, operational_state, registered_on)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURDATE()))`,
+            values,
+          )
+          created += 1
+        }
+      }
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+    res.json({ ok: true, created, updated, skipped: errors.length, errors: errors.slice(0, 200) })
+  }))
+
   router.delete('/api/materials/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const [result] = await getPool().query('DELETE FROM material_inventory WHERE id = ?', [req.params.id])
     if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'El material ya no existe.' })

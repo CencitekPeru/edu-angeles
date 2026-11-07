@@ -82,10 +82,10 @@ export default function AttendancePanel() {
                 <li key={level.level} className="grid grid-cols-[130px_1fr_60px] items-center gap-3 text-sm">
                   <span className="font-semibold text-foreground">Nivel {level.level}</span>
                   <span className="relative h-7 overflow-hidden rounded-md bg-slate-100 dark:bg-blue-500/15">
-                    <span className={cn('flex h-full items-center rounded-md px-3 text-xs font-semibold text-white', LEVEL_BAR[level.level])} style={{ width: `${Math.max(percent, level.attended ? 12 : 0)}%` }}>
+                    {percent > 0 && <span className={cn('absolute inset-y-0 left-0 rounded-md transition-[width] duration-500', LEVEL_BAR[level.level])} style={{ width: `${Math.max(percent, 2)}%` }} />}
+                    <span className={cn('absolute inset-y-0 left-3 flex items-center whitespace-nowrap text-xs font-semibold tabular-nums', percent >= 20 ? 'text-white' : 'text-foreground/70')}>
                       {level.attended} / {level.total}
                     </span>
-                    {!level.attended && <span className="absolute inset-y-0 left-3 flex items-center text-xs font-semibold text-foreground/70">0 / {level.total}</span>}
                   </span>
                   <span className="text-right font-semibold tabular-nums text-foreground">{percent.toFixed(1)} %</span>
                 </li>

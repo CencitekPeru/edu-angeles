@@ -11,6 +11,7 @@ import {
   Pencil,
   Phone,
   Save,
+  Search,
   Trash2,
   UserPlus,
   UserRound,
@@ -21,9 +22,11 @@ import { useApp } from '../context/AppContext'
 import { useCan } from '../lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Choice } from '@/components/ui/field'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { PageHeader, Panel, Pill, Table } from './campus/kit'
+import { Filters, PageHeader, Panel, Pill, Table } from './campus/kit'
 
 const AREAS = [
   'Matemática', 'Comunicación', 'Ciencia y Tecnología', 'Ciencias Sociales', 'Desarrollo Personal, Ciudadanía y Cívica',
@@ -105,9 +108,22 @@ export default function TeacherRegistration() {
   const [deleting, setDeleting] = useState(false)
   const [deactivating, setDeactivating] = useState(false)
 
+  const [filters, setFilters] = useState({ q: '', area: '', condition: '', status: '' })
+
   const teachers = users
     .filter((user) => user.role === 'teacher')
     .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+  const areaOptions = [...new Set(teachers.map((teacher) => teacher.subject).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+  const term = filters.q.trim().toLowerCase()
+  const visibleTeachers = teachers.filter((teacher) => {
+    if (term && ![teacher.name, teacher.firstNames, teacher.lastNames, teacher.dni, teacher.email].some((value) => String(value || '').toLowerCase().includes(term))) return false
+    if (filters.area && teacher.subject !== filters.area) return false
+    if (filters.condition && teacher.employmentCondition !== filters.condition) return false
+    if (filters.status === 'Habilitado' && !teacher.active) return false
+    if (filters.status === 'Inactivo' && teacher.active) return false
+    return true
+  })
+  const hasFilters = Boolean(term || filters.area || filters.condition || filters.status)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
 
   function openNew() {
@@ -189,10 +205,19 @@ export default function TeacherRegistration() {
         actions={canEdit && <Button type="button" onClick={openNew}><UserPlus /> Nuevo docente</Button>}
       />
 
-      <Panel title="Padrón de docentes registrados" icon={Users} contentClassName="p-0">
+      <Panel title="Padrón de docentes registrados" icon={Users}>
+        <Filters>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input className="pl-8" placeholder="Buscar por nombre, DNI o correo" aria-label="Buscar docente" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
+          </div>
+          <Choice value={filters.area || 'todas'} onChange={(value) => setFilters({ ...filters, area: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las áreas' }, ...areaOptions.map((item) => ({ value: item, label: item }))]} />
+          <Choice value={filters.condition || 'todas'} onChange={(value) => setFilters({ ...filters, condition: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las condiciones' }, ...CONDITIONS.map((item) => ({ value: item, label: item }))]} />
+          <Choice value={filters.status || 'todos'} onChange={(value) => setFilters({ ...filters, status: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los estados' }, { value: 'Habilitado', label: 'Habilitado' }, { value: 'Inactivo', label: 'Inactivo' }]} />
+        </Filters>
         <Table
-          rows={teachers}
-          empty="No hay docentes registrados en el sistema."
+          rows={visibleTeachers}
+          empty={hasFilters ? 'No hay docentes que coincidan con los filtros.' : 'No hay docentes registrados en el sistema.'}
           columns={[
             { key: 'name', label: 'Apellidos y nombres', render: (teacher) => (
               <span>

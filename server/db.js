@@ -203,6 +203,7 @@ export function mapUser(row) {
       phone: row.phone || '',
       employmentCondition: row.employment_condition || '',
       notes: row.notes || '',
+      createdOn: row.created_on ? String(row.created_on).slice(0, 10) : '',
     } : {}),
   }
 }

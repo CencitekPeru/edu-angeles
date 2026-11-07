@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Armchair, Boxes, CheckCircle2, Cpu, Eye, FileDown, FileUp, ListChecks, MapPin, Monitor, Pencil, Plus, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
+import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, FileDown, FileUp, ListChecks, MapPin, Monitor, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -13,12 +13,11 @@ import { Filters, PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { ImportInventoryDialog, downloadInventoryTemplate } from './InventoryImport'
 import { EquipmentForm, LEVELS } from './EquipmentForm'
 
-/** Tabs shared by the inventory views (tecnológicos, mobiliarios, ambientes). */
+/** Tabs shared by the inventory views (tecnológicos, ambientes). */
 export function InventoryTabs() {
   const { pathname } = useLocation()
   const tabs = [
     { to: '/admin/inventario', label: 'Bienes tecnológicos', icon: Monitor },
-    { to: '/admin/materiales', label: 'Bienes mobiliarios', icon: Armchair },
     { to: '/admin/catalogo', label: 'Ambientes y categorías', icon: MapPin },
   ]
   return (
@@ -34,6 +33,50 @@ export function InventoryTabs() {
         )
       })}
     </nav>
+  )
+}
+
+const CATALOG_PAGE_SIZE = 6
+
+/** Compact catalog list: search + fixed-size pages so long catalogs don't stretch the page. */
+function CatalogList({ items, label, canEdit, onRemove, empty }) {
+  const [query, setQuery] = useState('')
+  const [page, setPage] = useState(1)
+  const term = query.trim().toLowerCase()
+  const filtered = term ? items.filter((item) => item.name.toLowerCase().includes(term)) : items
+  const pageCount = Math.max(1, Math.ceil(filtered.length / CATALOG_PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const start = (currentPage - 1) * CATALOG_PAGE_SIZE
+  const pageItems = filtered.slice(start, start + CATALOG_PAGE_SIZE)
+
+  return (
+    <div className="space-y-3">
+      {items.length > CATALOG_PAGE_SIZE && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+          <Input className="h-9 pl-8" placeholder={`Buscar ${label.toLowerCase()}…`} aria-label={`Buscar ${label.toLowerCase()}`} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} />
+        </div>
+      )}
+      <ul className="space-y-2">
+        {pageItems.map((item) => (
+          <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-muted/40">
+            <span className="truncate" title={item.name}>{item.name}</span>
+            {canEdit && <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ${label.toLowerCase()} ${item.name}`} title={`Quitar ${label.toLowerCase()} ${item.name}`} className="shrink-0 shadow-sm" onClick={() => onRemove(item)}><Trash2 className="size-4" /></Button>}
+          </li>
+        ))}
+      </ul>
+      {filtered.length === 0 && <p className="text-sm text-muted-foreground">{term ? 'Sin coincidencias.' : empty}</p>}
+      {filtered.length > CATALOG_PAGE_SIZE && (
+        <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-3 text-xs text-muted-foreground">
+          <span>{start + 1}–{Math.min(start + CATALOG_PAGE_SIZE, filtered.length)} de {filtered.length}</span>
+          <div className="flex items-center gap-1.5">
+            <Button type="button" variant="outline" size="icon-sm" aria-label="Página anterior" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft className="size-4" /></Button>
+            <span className="min-w-12 text-center font-medium text-foreground">{currentPage} / {pageCount}</span>
+            <Button type="button" variant="outline" size="icon-sm" aria-label="Página siguiente" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}><ChevronRight className="size-4" /></Button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -312,15 +355,14 @@ export function CatalogPage() {
       <InventoryTabs />
     <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
       <Panel title="Categorías" action={canEdit && <Button type="button" size="sm" onClick={() => { setCategory(''); setKind('categoria') }}>Nueva categoría</Button>}>
-        <ul className="space-y-2">{categories.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span>{canEdit && <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar categoría ${item.name}`} title={`Quitar categoría ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/categories', item, 'Categoría')}><Trash2 className="size-4" /></Button>}</li>)}</ul>
+        <CatalogList items={categories} label="Categoría" canEdit={canEdit} empty="No hay categorías registradas." onRemove={(item) => removeCatalogItem('/api/categories', item, 'Categoría')} />
       </Panel>
       <Panel title="Ambientes" action={canEdit && <Button type="button" size="sm" onClick={() => { setPlace(''); setKind('ambiente') }}>Nuevo ambiente</Button>}>
-        <ul className="space-y-2">{places.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span>{canEdit && <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ambiente ${item.name}`} title={`Quitar ambiente ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/places', item, 'Ambiente')}><Trash2 className="size-4" /></Button>}</li>)}</ul>
+        <CatalogList items={places} label="Ambiente" canEdit={canEdit} empty="No hay ambientes registrados." onRemove={(item) => removeCatalogItem('/api/places', item, 'Ambiente')} />
       </Panel>
       <Panel title="Salas exclusivas de cómputo" action={canEdit && <Button type="button" size="sm" onClick={() => { setRoom(''); setKind('sala') }}>Nueva sala</Button>}>
         <p className="mb-3 text-xs text-muted-foreground">Estas salas aparecerán en los calendarios y en el formulario de reservas.</p>
-        <ul className="space-y-2">{rooms.map((item) => <li key={item.id} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"><span>{item.name}</span>{canEdit && <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar sala ${item.name}`} title={`Quitar sala ${item.name}`} className="shadow-sm" onClick={() => removeCatalogItem('/api/rooms', item, 'Sala')}><Trash2 className="size-4" /></Button>}</li>)}</ul>
-        {rooms.length === 0 && <p className="text-sm text-muted-foreground">No hay salas registradas.</p>}
+        <CatalogList items={rooms} label="Sala" canEdit={canEdit} empty="No hay salas registradas." onRemove={(item) => removeCatalogItem('/api/rooms', item, 'Sala')} />
       </Panel>
       <Dialog open={Boolean(kind)} onOpenChange={(next) => { if (!next) setKind('') }}>
         <DialogContent className="sm:max-w-lg">

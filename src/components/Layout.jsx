@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   AlertTriangle,
@@ -133,6 +133,32 @@ function flatItems(items) {
 
 function matches(item, pathname) {
   return item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`)
+}
+
+/* Approximate row heights (px) of the expanded sidebar, used to decide how many groups fit open. */
+const ROW_HEIGHT = 44 // top-level link or group header + gap
+const CHILD_HEIGHT = 38 // nested link
+const GROUP_PADDING = 6 // margin above the nested list
+const DIVIDER_HEIGHT = 25 // border + spacing of a divided group
+
+/**
+ * Opens groups by default while they fit in the available height: first the group of the
+ * current page, then the rest in menu order. Whatever doesn't fit stays collapsed.
+ */
+function groupsThatFit(items, height, pathname) {
+  const groups = items.filter((item) => item.children)
+  let used = items.reduce((total, item) => total + ROW_HEIGHT + (item.divider ? DIVIDER_HEIGHT : 0), 0)
+  const current = groups.find((group) => group.children.some((child) => matches(child, pathname)))
+  const ordered = current ? [current, ...groups.filter((group) => group !== current)] : groups
+  const open = Object.fromEntries(groups.map((group) => [group.label, false]))
+  for (const group of ordered) {
+    const cost = GROUP_PADDING + group.children.length * CHILD_HEIGHT
+    if (used + cost > height) continue
+    open[group.label] = true
+    used += cost
+  }
+  if (current) open[current.label] = true
+  return open
 }
 
 const tooltipClass = 'bg-slate-900 text-white border border-slate-700 text-xs px-2.5 py-1 font-medium shadow-xl'
@@ -311,18 +337,28 @@ export default function Layout() {
 
 function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
   const location = useLocation()
-  const [openGroups, setOpenGroups] = useState(() =>
-    Object.fromEntries(
-      items
-        .filter((item) => item.children)
-        .map((item) => [item.label, item.children.some((child) => matches(child, location.pathname))]),
-    ),
-  )
+  const navRef = useRef(null)
+  // Height available for the menu; starts with an estimate and is then measured.
+  const [navHeight, setNavHeight] = useState(() => Math.max(0, window.innerHeight - 200))
+  // Groups the user opened or closed by hand; they win over the automatic layout.
+  const [overrides, setOverrides] = useState({})
 
   useEffect(() => {
+    const node = navRef.current
+    if (!node || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(([entry]) => setNavHeight(Math.round(entry.contentRect.height)))
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [collapsed])
+
+  // Entering a page inside a group the user had closed reopens it.
+  useEffect(() => {
     const group = items.find((item) => item.children?.some((child) => matches(child, location.pathname)))
-    if (group) setOpenGroups((current) => (current[group.label] ? current : { ...current, [group.label]: true }))
+    if (group) setOverrides((current) => (current[group.label] === false ? { ...current, [group.label]: true } : current))
   }, [location.pathname, items])
+
+  const autoGroups = useMemo(() => groupsThatFit(items, navHeight, location.pathname), [items, navHeight, location.pathname])
+  const openGroups = { ...autoGroups, ...overrides }
 
   const linkClass = (isActive, nested) =>
     cn(
@@ -383,7 +419,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-1 overflow-y-auto">
+      <nav ref={navRef} className="min-h-0 flex-1 space-y-1 overflow-y-auto">
         {collapsed
           ? flatItems(items).map((item) => {
               const Icon = item.icon
@@ -428,7 +464,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                 <div key={item.label} className={item.divider ? 'mt-3 border-t border-white/10 pt-3' : ''}>
                   <button
                     type="button"
-                    onClick={() => setOpenGroups((current) => ({ ...current, [item.label]: !current[item.label] }))}
+                    onClick={() => setOverrides((current) => ({ ...current, [item.label]: !openGroups[item.label] }))}
                     className={cn(
                       'flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-white/[0.07]',
                       hasActive ? 'font-semibold text-white' : 'text-slate-300 hover:text-white',

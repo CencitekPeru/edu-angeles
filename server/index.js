@@ -64,7 +64,8 @@ app.post('/api/auth/login', wrap(async (req, res) => {
   if (!user.active) {
     return res.status(403).json({ ok: false, error: 'Tu cuenta está desactivada. Escribe a coordinación.' })
   }
-  const token = jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: '12h' })
+  // «Recordarme» extends the session; otherwise it lasts a school day.
+  const token = jwt.sign({ sub: user.id, role: user.role }, config.jwtSecret, { expiresIn: req.body.remember === true ? '30d' : '12h' })
   res.json({ ok: true, token, user: mapUser(user) })
 }))
 
@@ -305,7 +306,7 @@ app.post('/api/requests/:id/decide', requireAuth, requireAdmin, wrap(async (req,
   }
 }))
 
-const USER_PROFILE_COLUMNS = "first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes"
+const USER_PROFILE_COLUMNS = "first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes, DATE_FORMAT(created_at, '%Y-%m-%d') AS created_on"
 
 const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
 const CONDITIONS = ['Nombrado', 'Contratado', 'Reasignado', 'Destacado', 'Practicante', 'Otro']
@@ -315,8 +316,11 @@ function profileInput(body) {
   const firstNames = String(body.firstNames || '').trim().slice(0, 120)
   const lastNames = String(body.lastNames || '').trim().slice(0, 120)
   const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(String(body.birthDate || '')) ? body.birthDate : null
+  const has = (key) => Object.prototype.hasOwnProperty.call(body, key)
   return {
-    provided: Object.prototype.hasOwnProperty.call(body, 'firstNames'),
+    provided: has('firstNames'),
+    // Contact fields can be sent on their own (the Usuarios view edits only these).
+    has: { gender: has('gender'), phone: has('phone'), employmentCondition: has('employmentCondition'), notes: has('notes'), birthDate: has('birthDate') },
     firstNames,
     lastNames,
     fullName: firstNames && lastNames ? `${firstNames} ${lastNames}` : '',
@@ -352,7 +356,7 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes],
   )
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes FROM users WHERE id = ?`, [created.insertId])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
   const user = mapUser(rows[0])
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
@@ -392,14 +396,16 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
        gender = IF(?, ?, gender), phone = IF(?, ?, phone), employment_condition = IF(?, ?, employment_condition), notes = IF(?, ?, notes)
      WHERE id = ?`,
     [name, email, role === 'teacher' ? subject : ROLE_SUBJECT[role], dni, role,
-      ...[profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes].flatMap((value) => [profile.provided, value]),
+      profile.provided, profile.firstNames, profile.provided, profile.lastNames,
+      profile.has.birthDate, profile.birthDate, profile.has.gender, profile.gender, profile.has.phone, profile.phone,
+      profile.has.employmentCondition, profile.employmentCondition, profile.has.notes, profile.notes,
       req.params.id],
   )
   if (!result.affectedRows) {
     const [rows] = await pool.query('SELECT id FROM users WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
   }
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes FROM users WHERE id = ?`, [req.params.id])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [req.params.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 

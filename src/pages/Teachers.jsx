@@ -3,14 +3,30 @@ import { Pencil, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundChec
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Field } from '@/components/ui/field'
+import { Choice, Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, PageHeader } from '../components/ui'
-import { Pill } from './campus/kit'
+import { Pill, Table } from './campus/kit'
 import { ROLE_LABEL, useCan } from '../lib/permissions'
 
-const emptyUser = { name: '', email: '', dni: '', role: 'admin' }
+const emptyUser = { name: '', email: '', dni: '', gender: '', phone: '', role: 'admin' }
+const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
+const cleanPhone = (value) => value.replace(/[^\d+\s-]/g, '').slice(0, 15)
+const dmy = (iso) => (iso ? iso.split('-').reverse().join('/') : '—')
+
+function ContactFields({ value, onChange }) {
+  return (
+    <>
+      <Field label="Género">
+        <Choice value={value.gender || ''} onChange={(gender) => onChange({ ...value, gender })} placeholder="Seleccione" options={GENDERS.map((item) => ({ value: item, label: item }))} />
+      </Field>
+      <Field label="Teléfono">
+        <Input type="tel" inputMode="tel" value={value.phone || ''} onChange={(event) => onChange({ ...value, phone: cleanPhone(event.target.value) })} placeholder="Ej. 987 654 321" />
+      </Field>
+    </>
+  )
+}
 
 const ROLE_OPTIONS = [
   { value: 'admin', label: 'Coordinación CIST', text: 'Acceso completo: registra, edita, aprueba y elimina en todo el sistema.' },
@@ -86,7 +102,8 @@ export default function Teachers() {
     event.preventDefault()
     setSaving(true)
     setError('')
-    const result = await updateTeacher(editing.id, editing)
+    const { name, email, dni, role, subject, gender, phone } = editing
+    const result = await updateTeacher(editing.id, { name, email, dni, role, subject, gender, phone })
     setSaving(false)
     if (!result.ok) {
       setError(result.error || 'No se pudo actualizar el usuario.')
@@ -153,6 +170,7 @@ export default function Teachers() {
               <Field className="sm:col-span-2" label="DNI *" hint="Ingresa los 8 dígitos del documento. Se usará para iniciar sesión.">
                 <Input type="text" inputMode="numeric" autoComplete="off" value={newUser.dni} onChange={(event) => setNewUser({ ...newUser, dni: event.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
               </Field>
+              <ContactFields value={newUser} onChange={setNewUser} />
             </UserFormSection>
             <UserFormSection icon={<ShieldCheck className="size-4" />} title="Rol y permisos" description="Define qué podrá ver y hacer este usuario.">
               <RolePicker value={newUser.role} onChange={(role) => setNewUser({ ...newUser, role })} />
@@ -186,70 +204,56 @@ export default function Teachers() {
 
       <Card className="overflow-hidden border-border/80">
         <CardContent className="p-0">
-          <ul className="divide-y divide-border/60">
-            {list.map((user) => {
-              const count = requests.filter((item) => item.teacherId === user.id).length
-              return (
-                <li key={user.id} className="flex flex-col gap-3 p-4 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
+          <Table
+            rows={list}
+            empty="No hay usuarios que coincidan con la búsqueda."
+            columns={[
+              { key: 'name', label: 'Usuario', render: (user) => {
+                const count = requests.filter((item) => item.teacherId === user.id).length
+                return (
+                  <span className="flex min-w-0 items-center gap-3">
                     <Avatar name={user.name} image={user.profilePhoto} size="default" />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-sm text-foreground truncate">{user.name}</p>
-                        <Pill value={ROLE_LABEL[user.role] || 'Docente'} />
-                        {!user.active && <Pill value="Inactivo" />}
-                      </div>
-                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                      <p className="text-xs text-muted-foreground/80 mt-0.5">
-                        {user.subject}
-                        {user.role === 'teacher' ? ` · ${count} ${count === 1 ? 'solicitud' : 'solicitudes'}` : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  {canEdit && <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-muted-foreground hover:text-foreground"
-                      onClick={() => { setEditing({ ...user }); setError('') }}
-                      title={`Editar ${user.role === 'admin' ? 'usuario' : 'docente'}`}
-                      aria-label={`Editar ${user.name}`}
-                    >
-                      <Pencil className="size-4" />
+                    <span className="min-w-0">
+                      <span className="block truncate font-bold">{user.name}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{user.email}</span>
+                      <span className="block text-xs text-muted-foreground/80">
+                        {user.subject}{user.role === 'teacher' ? ` · ${count} ${count === 1 ? 'solicitud' : 'solicitudes'}` : ''}
+                      </span>
+                    </span>
+                  </span>
+                )
+              } },
+              { key: 'dni', label: 'DNI', render: (user) => user.dni || '—' },
+              { key: 'gender', label: 'Género', render: (user) => user.gender || '—' },
+              { key: 'phone', label: 'Teléfono', render: (user) => <span className="whitespace-nowrap">{user.phone || '—'}</span> },
+              { key: 'role', label: 'Rol', render: (user) => (
+                <span className="flex flex-wrap gap-1.5">
+                  <Pill value={ROLE_LABEL[user.role] || 'Docente'} />
+                  {!user.active && <Pill value="Inactivo" />}
+                </span>
+              ) },
+              { key: 'createdOn', label: 'Fecha de registro', render: (user) => <span className="whitespace-nowrap tabular-nums">{dmy(user.createdOn)}</span> },
+              { key: 'actions', label: 'Acciones', hidden: !canEdit, render: (user) => (
+                <span className="flex items-center gap-1">
+                  <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground"
+                    onClick={() => { setEditing({ ...user }); setError('') }} title="Editar usuario" aria-label={`Editar ${user.name}`}>
+                    <Pencil className="size-4" />
+                  </Button>
+                  {user.id !== currentUser.id && (
+                    <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground"
+                      onClick={() => toggle(user)} title={user.active ? 'Desactivar acceso' : 'Activar acceso'} aria-label={user.active ? `Desactivar ${user.name}` : `Activar ${user.name}`}>
+                      {user.active ? <UserRoundX className="size-4 text-amber-600" /> : <UserRoundCheck className="size-4 text-emerald-600" />}
                     </Button>
-                    {user.id !== currentUser.id && (
-                      <>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={() => toggle(user)}
-                          title={user.active ? 'Desactivar acceso' : 'Activar acceso'}
-                        >
-                          {user.active ? <UserRoundX className="size-4 text-amber-600" /> : <UserRoundCheck className="size-4 text-emerald-600" />}
-                        </Button>
-                      </>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="text-destructive hover:bg-destructive/10"
-                      onClick={() => setDeleting(user)}
-                      disabled={user.id === currentUser.id}
-                      title={user.id === currentUser.id ? 'No puedes eliminar tu propia cuenta' : `Eliminar ${user.role === 'admin' ? 'usuario' : 'docente'}`}
-                      aria-label={`Eliminar ${user.name}`}
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>}
-                </li>
-              )
-            })}
-          </ul>
+                  )}
+                  <Button type="button" variant="ghost" size="icon-sm" className="text-destructive hover:bg-destructive/10"
+                    onClick={() => setDeleting(user)} disabled={user.id === currentUser.id}
+                    title={user.id === currentUser.id ? 'No puedes eliminar tu propia cuenta' : 'Eliminar usuario'} aria-label={`Eliminar ${user.name}`}>
+                    <Trash2 className="size-4" />
+                  </Button>
+                </span>
+              ) },
+            ]}
+          />
         </CardContent>
       </Card>
 
@@ -277,6 +281,7 @@ export default function Teachers() {
                 <Field className="sm:col-span-2" label="DNI *">
                   <Input type="text" inputMode="numeric" autoComplete="off" value={editing.dni || ''} onChange={(e) => setEditing({ ...editing, dni: e.target.value.replace(/\D/g, '').slice(0, 8) })} minLength={8} maxLength={8} pattern="[0-9]{8}" required />
                 </Field>
+                <ContactFields value={editing} onChange={setEditing} />
                 {editing.role === 'teacher' && (
                   <Field className="sm:col-span-2" label="Especialidad / Área pedagógica *">
                     <Input value={editing.subject || ''} onChange={(e) => setEditing({ ...editing, subject: e.target.value })} required />

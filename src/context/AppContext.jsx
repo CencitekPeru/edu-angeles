@@ -101,10 +101,10 @@ export function AppProvider({ children }) {
     setToasts((current) => current.filter((item) => item.id !== id))
   }
 
-  async function login(email, dni) {
-    const result = await api('/api/auth/login', { method: 'POST', body: { email, dni } })
+  async function login(email, dni, remember = false) {
+    const result = await api('/api/auth/login', { method: 'POST', body: { email, dni, remember } })
     if (!result.ok) return result
-    setToken(result.token)
+    setToken(result.token, remember)
     setUser(result.user)
     setOffline(false)
     await refresh()

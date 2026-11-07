@@ -1,12 +1,14 @@
 const TOKEN_KEY = 'nodo-token'
 
+/** «Recordarme» keeps the session in localStorage; otherwise it only lives until the browser closes. */
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY)
+  return localStorage.getItem(TOKEN_KEY) || sessionStorage.getItem(TOKEN_KEY)
 }
 
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token)
-  else localStorage.removeItem(TOKEN_KEY)
+export function setToken(token, remember = true) {
+  localStorage.removeItem(TOKEN_KEY)
+  sessionStorage.removeItem(TOKEN_KEY)
+  if (token) (remember ? localStorage : sessionStorage).setItem(TOKEN_KEY, token)
 }
 
 export async function api(path, { method = 'GET', body } = {}) {

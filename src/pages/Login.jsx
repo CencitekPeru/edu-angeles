@@ -7,10 +7,13 @@ import { homePath } from '../lib/permissions'
 import { Button } from '@/components/ui/button'
 import { AuthCardHeader, AuthShell, IconInput } from '../components/AuthShell'
 
+const REMEMBER_KEY = 'nodo-remember-email'
+
 export default function Login() {
   const { login, offline } = useApp()
   const navigate = useNavigate()
-  const [email, setEmail] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_KEY) || '')
+  const [remember, setRemember] = useState(() => Boolean(localStorage.getItem(REMEMBER_KEY)))
   const [dni, setDni] = useState('')
   const [showDni, setShowDni] = useState(false)
   const [error, setError] = useState('')
@@ -26,9 +29,11 @@ export default function Login() {
     if (!/^\d{8}$/.test(dni)) return setError('El DNI debe contener exactamente 8 dígitos.')
     setLoading(true)
     setError('')
-    const result = await login(email, dni)
+    const result = await login(email, dni, remember)
     setLoading(false)
     if (!result.ok) return setError(result.error || 'Credenciales incorrectas o servidor no disponible.')
+    if (remember) localStorage.setItem(REMEMBER_KEY, email.trim().toLowerCase())
+    else localStorage.removeItem(REMEMBER_KEY)
     navigate(homePath(result.user), { replace: true })
   }
 
@@ -71,6 +76,16 @@ export default function Login() {
               </button>
             }
           />
+        </label>
+
+        <label className="flex w-fit cursor-pointer select-none items-center gap-2 text-sm text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={remember}
+            onChange={(event) => setRemember(event.target.checked)}
+            className="size-4 cursor-pointer rounded border-input accent-[#0f2e6b] dark:accent-[var(--primary)]"
+          />
+          Recordarme en este equipo
         </label>
 
         {error && (
