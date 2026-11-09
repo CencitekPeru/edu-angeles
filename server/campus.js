@@ -55,6 +55,41 @@ const profileUpload = multer({
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
+/**
+ * Renames a simple catalog row (id + unique name). `cascade` lists text columns that store the
+ * name instead of the id, so they are updated in the same transaction.
+ */
+async function renameCatalogItem(req, res, { table, where = '', label, notFound, duplicate, cascade = [] }) {
+  const name = String(req.body.name || '').replace(/\s+/g, ' ').trim()
+  if (name.length < 3) return res.status(400).json({ ok: false, error: 'Escribe un nombre de al menos 3 caracteres.' })
+  if (name.length > 120) return res.status(400).json({ ok: false, error: 'El nombre admite hasta 120 caracteres.' })
+  const connection = await getPool().getConnection()
+  try {
+    await connection.beginTransaction()
+    const [rows] = await connection.query(`SELECT id, name FROM ${table} WHERE id = ? ${where} FOR UPDATE`, [req.params.id])
+    if (!rows.length) {
+      await connection.rollback()
+      return res.status(404).json({ ok: false, error: notFound })
+    }
+    const [existing] = await connection.query(`SELECT id FROM ${table} WHERE LOWER(name) = LOWER(?) AND id <> ?`, [name, req.params.id])
+    if (existing.length) {
+      await connection.rollback()
+      return res.status(409).json({ ok: false, error: duplicate })
+    }
+    await connection.query(`UPDATE ${table} SET name = ? WHERE id = ?`, [name, req.params.id])
+    for (const [cascadeTable, column] of cascade) {
+      await connection.query(`UPDATE ${cascadeTable} SET ${column} = ? WHERE ${column} = ?`, [name, rows[0].name])
+    }
+    await connection.commit()
+    res.json({ ok: true, item: { id: Number(req.params.id), name }, label })
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
 export function campusRouter() {
   const router = express.Router()
   router.use('/api/uploads', express.static(uploadDir))
@@ -78,6 +113,11 @@ export function campusRouter() {
     )
     res.status(201).json({ ok: true, room: { id: created.insertId, name } })
   }))
+
+  router.put('/api/rooms/:id', requireAuth, requireAdmin, wrap((req, res) => renameCatalogItem(req, res, {
+    table: 'rooms', where: 'AND is_computer_room = 1', label: 'Sala',
+    notFound: 'La sala de cómputo ya no existe.', duplicate: 'Ya existe una sala con ese nombre.',
+  })))
 
   router.delete('/api/rooms/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const connection = await getPool().getConnection()
@@ -185,6 +225,11 @@ export function campusRouter() {
     await getPool().query('INSERT INTO categories (name) VALUES (?)', [name])
     res.status(201).json({ ok: true })
   }))
+  router.put('/api/categories/:id', requireAuth, requireAdmin, wrap((req, res) => renameCatalogItem(req, res, {
+    table: 'categories', label: 'Categoría',
+    notFound: 'La categoría ya no existe.', duplicate: 'Ya existe una categoría con ese nombre.',
+    cascade: [['material_inventory', 'category']],
+  })))
   router.delete('/api/categories/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const connection = await getPool().getConnection()
     try {
@@ -231,6 +276,38 @@ export function campusRouter() {
     const [result] = await getPool().query('INSERT INTO patrimonial_codes (code, description) VALUES (?, ?)', [code, description])
     res.status(201).json({ ok: true, code: { id: result.insertId, code, description } })
   }))
+  router.put('/api/patrimonial-codes/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const code = String(req.body.code || '').replace(/\s+/g, '').trim()
+    const description = String(req.body.description || '').replace(/\s+/g, ' ').trim().toUpperCase()
+    if (!/^[0-9-]{6,20}$/.test(code)) return res.status(400).json({ ok: false, error: 'Escribe un código patrimonial válido (solo números).' })
+    if (description.length < 3 || description.length > 255) return res.status(400).json({ ok: false, error: 'Escribe la descripción del bien.' })
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [rows] = await connection.query('SELECT id, code FROM patrimonial_codes WHERE id = ? FOR UPDATE', [req.params.id])
+      if (!rows.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'El código ya no existe.' })
+      }
+      const [existing] = await connection.query('SELECT description FROM patrimonial_codes WHERE code = ? AND id <> ?', [code, req.params.id])
+      if (existing.length) {
+        await connection.rollback()
+        return res.status(409).json({ ok: false, error: `El código ${code} ya está registrado (${existing[0].description}).` })
+      }
+      await connection.query('UPDATE patrimonial_codes SET code = ?, description = ? WHERE id = ?', [code, description, req.params.id])
+      if (rows[0].code !== code) {
+        await connection.query('UPDATE equipment SET patrimonial = ? WHERE patrimonial = ?', [code, rows[0].code])
+        await connection.query('UPDATE material_inventory SET cod_minedu = ? WHERE cod_minedu = ?', [code, rows[0].code])
+      }
+      await connection.commit()
+      res.json({ ok: true, code: { id: Number(req.params.id), code, description } })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+  }))
   router.delete('/api/patrimonial-codes/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const [result] = await getPool().query('DELETE FROM patrimonial_codes WHERE id = ?', [req.params.id])
     if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'El código ya no existe.' })
@@ -247,6 +324,11 @@ export function campusRouter() {
     await getPool().query('INSERT INTO places (name) VALUES (?)', [name])
     res.status(201).json({ ok: true })
   }))
+  router.put('/api/places/:id', requireAuth, requireAdmin, wrap((req, res) => renameCatalogItem(req, res, {
+    table: 'places', label: 'Ambiente',
+    notFound: 'El ambiente ya no existe.', duplicate: 'Ya existe un ambiente con ese nombre.',
+    cascade: [['material_inventory', 'place']],
+  })))
   router.delete('/api/places/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const connection = await getPool().getConnection()
     try {
@@ -657,6 +739,38 @@ export function campusRouter() {
     }
   }))
 
+  /** Uses an image published on the internet (http/https link) instead of uploading a file. */
+  router.post('/api/equipment/:id/photo-url', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const url = String(req.body.url || '').trim()
+    let parsed = null
+    try { parsed = new URL(url) } catch { parsed = null }
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol) || url.length > 1024) {
+      return res.status(400).json({ ok: false, error: 'Escribe un enlace de imagen válido que empiece con http:// o https://.' })
+    }
+    const connection = await getPool().getConnection()
+    try {
+      await connection.beginTransaction()
+      const [equipment] = await connection.query('SELECT id FROM equipment WHERE id = ? FOR UPDATE', [req.params.id])
+      if (!equipment.length) {
+        await connection.rollback()
+        return res.status(404).json({ ok: false, error: 'Equipo no encontrado.' })
+      }
+      const [photos] = await connection.query('SELECT id FROM equipment_photos WHERE equipment_id = ?', [req.params.id])
+      if (photos.length) {
+        await connection.rollback()
+        return res.status(409).json({ ok: false, error: 'Este equipo ya tiene una fotografía. Elimínala antes de cargar otra.' })
+      }
+      await connection.query('INSERT INTO equipment_photos (equipment_id, path) VALUES (?, ?)', [req.params.id, parsed.href])
+      await connection.commit()
+      res.json({ ok: true })
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+  }))
+
   router.delete('/api/equipment/:id/photos/:photoId', requireAuth, requireAdmin, wrap(async (req, res) => {
     const [photos] = await getPool().query(
       'SELECT id, path FROM equipment_photos WHERE id = ? AND equipment_id = ?',
@@ -664,19 +778,22 @@ export function campusRouter() {
     )
     if (!photos.length) return res.status(404).json({ ok: false, error: 'La fotografía no existe para este equipo.' })
 
-    const fileName = path.basename(photos[0].path)
-    const filePath = path.join(uploadDir, fileName)
-    if (path.dirname(path.resolve(filePath)) !== path.resolve(uploadDir)) {
+    // Images given as a link live elsewhere: only the reference is removed.
+    const uploaded = photos[0].path.startsWith('/api/uploads/')
+    const filePath = uploaded ? path.join(uploadDir, path.basename(photos[0].path)) : null
+    if (filePath && path.dirname(path.resolve(filePath)) !== path.resolve(uploadDir)) {
       return res.status(400).json({ ok: false, error: 'La ruta de la fotografía no es válida.' })
     }
     await getPool().query(
       'DELETE FROM equipment_photos WHERE id = ? AND equipment_id = ?',
       [req.params.photoId, req.params.id],
     )
-    try {
-      await fs.promises.unlink(filePath)
-    } catch (error) {
-      if (error.code !== 'ENOENT') throw error
+    if (filePath) {
+      try {
+        await fs.promises.unlink(filePath)
+      } catch (error) {
+        if (error.code !== 'ENOENT') throw error
+      }
     }
     res.json({ ok: true })
   }))
@@ -1215,6 +1332,11 @@ export async function ensureCampus() {
     path VARCHAR(255) NOT NULL,
     CONSTRAINT fk_equipment_photo FOREIGN KEY (equipment_id) REFERENCES equipment(id) ON DELETE CASCADE
   ) ENGINE=InnoDB`)
+  // The image can also be an internet link, which may be longer than a local path.
+  const [photoPath] = await db.query("SHOW COLUMNS FROM equipment_photos LIKE 'path'")
+  if (photoPath[0] && /varchar\((\d+)\)/i.test(photoPath[0].Type) && Number(/varchar\((\d+)\)/i.exec(photoPath[0].Type)[1]) < 1024) {
+    await db.query('ALTER TABLE equipment_photos MODIFY path VARCHAR(1024) NOT NULL')
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS maintenance (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(40) NOT NULL UNIQUE,

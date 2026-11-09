@@ -42,7 +42,7 @@ export function InventoryTabs() {
 const CATALOG_PAGE_SIZE = 6
 
 /** Compact catalog list: search + fixed-size pages so long catalogs don't stretch the page. */
-function CatalogList({ items, label, canEdit, onRemove, empty }) {
+function CatalogList({ items, label, canEdit, onEdit, onRemove, empty }) {
   const [query, setQuery] = useState('')
   const [page, setPage] = useState(1)
   const term = query.trim().toLowerCase()
@@ -64,7 +64,12 @@ function CatalogList({ items, label, canEdit, onRemove, empty }) {
         {pageItems.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-muted/40">
             <span className="truncate" title={item.name}>{item.name}</span>
-            {canEdit && <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ${label.toLowerCase()} ${item.name}`} title={`Quitar ${label.toLowerCase()} ${item.name}`} className="shrink-0 shadow-sm" onClick={() => onRemove(item)}><Trash2 className="size-4" /></Button>}
+            {canEdit && (
+              <div className="flex shrink-0 items-center gap-1.5">
+                {onEdit && <Button type="button" variant="outline" size="icon-sm" aria-label={`Editar ${label.toLowerCase()} ${item.name}`} title={`Editar ${label.toLowerCase()} ${item.name}`} className="shadow-sm" onClick={() => onEdit(item)}><Pencil className="size-4" /></Button>}
+                <Button type="button" variant="destructive" size="icon-sm" aria-label={`Quitar ${label.toLowerCase()} ${item.name}`} title={`Quitar ${label.toLowerCase()} ${item.name}`} className="shadow-sm" onClick={() => onRemove(item)}><Trash2 className="size-4" /></Button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -384,15 +389,18 @@ function PatrimonialCodesPanel({ canEdit }) {
   const [codes, reload] = usePatrimonialCodes()
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
-  const items = codes.map((item) => ({ id: item.id, name: `${item.code} · ${item.description}`, code: item.code }))
+  const items = codes.map((item) => ({ id: item.id, name: `${item.code} · ${item.description}`, code: item.code, description: item.description }))
 
   async function save(event) {
     event.preventDefault()
     setSaving(true)
-    const result = await api('/api/patrimonial-codes', { method: 'POST', body: draft })
+    const body = { code: draft.code, description: draft.description }
+    const result = draft.id
+      ? await api(`/api/patrimonial-codes/${draft.id}`, { method: 'PUT', body })
+      : await api('/api/patrimonial-codes', { method: 'POST', body })
     setSaving(false)
-    if (!result.ok) return toast(result.error || 'No se pudo registrar el código.', 'bad')
-    toast(`Código ${result.code.code} agregado al catálogo.`)
+    if (!result.ok) return toast(result.error || 'No se pudo guardar el código.', 'bad')
+    toast(draft.id ? `Código ${result.code.code} actualizado.` : `Código ${result.code.code} agregado al catálogo.`)
     setDraft(null)
     reload()
   }
@@ -407,15 +415,15 @@ function PatrimonialCodesPanel({ canEdit }) {
   return (
     <Panel title="Códigos patrimoniales" action={canEdit && <Button type="button" size="sm" onClick={() => setDraft({ code: '', description: '' })}>Nuevo código</Button>}>
       <p className="mb-3 text-xs text-muted-foreground">Se eligen al registrar bienes tecnológicos y mobiliarios. {codes.length} códigos en el catálogo.</p>
-      <CatalogList items={items} label="Código" canEdit={canEdit} empty="No hay códigos registrados." onRemove={remove} />
+      <CatalogList items={items} label="Código" canEdit={canEdit} empty="No hay códigos registrados." onEdit={(item) => setDraft({ id: item.id, code: item.code, description: item.description })} onRemove={remove} />
       <Dialog open={Boolean(draft)} onOpenChange={(next) => { if (!next && !saving) setDraft(null) }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader className="border-b border-border/70 pb-4">
             <div className="flex items-start gap-3 pr-6">
               <div className="rounded-lg bg-primary/10 p-2 text-primary"><Hash className="size-5" /></div>
               <div>
-                <DialogTitle>Nuevo código patrimonial</DialogTitle>
-                <DialogDescription className="mt-1">Aparecerá como opción al registrar bienes en el inventario.</DialogDescription>
+                <DialogTitle>{draft?.id ? 'Editar código patrimonial' : 'Nuevo código patrimonial'}</DialogTitle>
+                <DialogDescription className="mt-1">{draft?.id ? 'Si cambias el código, se actualizará también en los bienes que lo usan.' : 'Aparecerá como opción al registrar bienes en el inventario.'}</DialogDescription>
               </div>
             </div>
           </DialogHeader>
@@ -450,6 +458,7 @@ export function CatalogPage() {
   const [place, setPlace] = useState('')
   const [room, setRoom] = useState('')
   const [kind, setKind] = useState('')
+  const [editingId, setEditingId] = useState(null)
   const [rooms, setRooms] = useState([])
 
   async function load() {
@@ -460,11 +469,22 @@ export function CatalogPage() {
   }
   useEffect(() => { load() }, [])
 
-  async function add(path, name, clear) {
-    const result = await api(path, { method: 'POST', body: { name } })
+  function openDialog(nextKind, item = null) {
+    const setter = nextKind === 'categoria' ? setCategory : nextKind === 'ambiente' ? setPlace : setRoom
+    setter(item ? item.name : '')
+    setEditingId(item ? item.id : null)
+    setKind(nextKind)
+  }
+
+  async function save(path, name, clear) {
+    const result = editingId
+      ? await api(`${path}/${editingId}`, { method: 'PUT', body: { name } })
+      : await api(path, { method: 'POST', body: { name } })
     if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
+    if (editingId) toast(`"${name.trim()}" actualizado.`)
     clear('')
     setKind('')
+    setEditingId(null)
     if (path === '/api/rooms') await refreshRooms()
     load()
   }
@@ -482,15 +502,15 @@ export function CatalogPage() {
       <PageHeader icon={MapPin} title="Ambientes y categorías" description="Catálogos usados para clasificar, ubicar e identificar los bienes de la institución." />
       <InventoryTabs />
     <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-      <Panel title="Categorías" action={canEdit && <Button type="button" size="sm" onClick={() => { setCategory(''); setKind('categoria') }}>Nueva categoría</Button>}>
-        <CatalogList items={categories} label="Categoría" canEdit={canEdit} empty="No hay categorías registradas." onRemove={(item) => removeCatalogItem('/api/categories', item, 'Categoría')} />
+      <Panel title="Categorías" action={canEdit && <Button type="button" size="sm" onClick={() => openDialog('categoria')}>Nueva categoría</Button>}>
+        <CatalogList items={categories} label="Categoría" canEdit={canEdit} empty="No hay categorías registradas." onEdit={(item) => openDialog('categoria', item)} onRemove={(item) => removeCatalogItem('/api/categories', item, 'Categoría')} />
       </Panel>
-      <Panel title="Ambientes" action={canEdit && <Button type="button" size="sm" onClick={() => { setPlace(''); setKind('ambiente') }}>Nuevo ambiente</Button>}>
-        <CatalogList items={places} label="Ambiente" canEdit={canEdit} empty="No hay ambientes registrados." onRemove={(item) => removeCatalogItem('/api/places', item, 'Ambiente')} />
+      <Panel title="Ambientes" action={canEdit && <Button type="button" size="sm" onClick={() => openDialog('ambiente')}>Nuevo ambiente</Button>}>
+        <CatalogList items={places} label="Ambiente" canEdit={canEdit} empty="No hay ambientes registrados." onEdit={(item) => openDialog('ambiente', item)} onRemove={(item) => removeCatalogItem('/api/places', item, 'Ambiente')} />
       </Panel>
-      <Panel title="Salas exclusivas de cómputo" action={canEdit && <Button type="button" size="sm" onClick={() => { setRoom(''); setKind('sala') }}>Nueva sala</Button>}>
+      <Panel title="Salas exclusivas de cómputo" action={canEdit && <Button type="button" size="sm" onClick={() => openDialog('sala')}>Nueva sala</Button>}>
         <p className="mb-3 text-xs text-muted-foreground">Estas salas aparecerán en los calendarios y en el formulario de reservas.</p>
-        <CatalogList items={rooms} label="Sala" canEdit={canEdit} empty="No hay salas registradas." onRemove={(item) => removeCatalogItem('/api/rooms', item, 'Sala')} />
+        <CatalogList items={rooms} label="Sala" canEdit={canEdit} empty="No hay salas registradas." onEdit={(item) => openDialog('sala', item)} onRemove={(item) => removeCatalogItem('/api/rooms', item, 'Sala')} />
       </Panel>
       <PatrimonialCodesPanel canEdit={canEdit} />
       <Dialog open={Boolean(kind)} onOpenChange={(next) => { if (!next) setKind('') }}>
@@ -501,7 +521,9 @@ export function CatalogPage() {
                 {kind === 'categoria' ? <Tag className="size-5" /> : kind === 'ambiente' ? <MapPin className="size-5" /> : <Cpu className="size-5" />}
               </div>
               <div>
-                <DialogTitle>{kind === 'categoria' ? 'Nueva categoría' : kind === 'ambiente' ? 'Nuevo ambiente' : 'Nueva sala de cómputo'}</DialogTitle>
+                <DialogTitle>{editingId
+                  ? (kind === 'categoria' ? 'Editar categoría' : kind === 'ambiente' ? 'Editar ambiente' : 'Editar sala de cómputo')
+                  : (kind === 'categoria' ? 'Nueva categoría' : kind === 'ambiente' ? 'Nuevo ambiente' : 'Nueva sala de cómputo')}</DialogTitle>
                 <DialogDescription className="mt-1">
                   {kind === 'categoria'
                     ? 'Organiza los equipos con una categoría fácil de reconocer.'
@@ -516,7 +538,7 @@ export function CatalogPage() {
             className="grid gap-4"
             onSubmit={(event) => {
               event.preventDefault()
-              add(
+              save(
                 kind === 'categoria' ? '/api/categories' : kind === 'ambiente' ? '/api/places' : '/api/rooms',
                 kind === 'categoria' ? category : kind === 'ambiente' ? place : room,
                 kind === 'categoria' ? setCategory : kind === 'ambiente' ? setPlace : setRoom,

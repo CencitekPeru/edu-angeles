@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Boxes, ClipboardList, FileDown, FileSpreadsheet, FileUp, MapPin, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Boxes, ClipboardList, FileDown, FileSpreadsheet, FileText, FileUp, MapPin, Package, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -14,7 +14,7 @@ import { PageHeader, Panel, Pill, Table } from './kit'
 import { InventoryTabs } from './Inventory'
 import { PatrimonialCodePicker } from './PatrimonialCodePicker'
 import { Select } from '../attendance/shared'
-import { exportTableXlsx } from '../../lib/exporters'
+import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
 import { ImportMaterialsDialog, downloadMaterialsTemplate } from './MaterialsImport'
 
 const emptyMaterial = {
@@ -138,6 +138,25 @@ export default function MaterialsPage() {
     exportTableXlsx(payload).then(() => toast('Inventario exportado a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
   }
 
+  function exportPdf() {
+    if (!filteredMaterials.length) return toast('No hay bienes para exportar.', 'bad')
+    exportTablePdf({
+      title: 'Inventario de bienes mobiliarios',
+      subtitle: query.trim() ? `Filtro: «${query.trim()}»` : 'Todos los bienes registrados',
+      summary: [['Registros', filteredMaterials.length], ['Unidades', filteredMaterials.reduce((total, item) => total + item.quantity, 0)]],
+      headers: ['Nivel', 'COD MINEDU', 'Denominación', 'Tipo', 'Color', 'Dimensiones', 'Cantidad', 'Ubicación', 'Estado operativo', 'Estado físico', 'Observación'],
+      rows: filteredMaterials.map((item) => [
+        item.level || '—', item.codMinedu || '—', item.name, item.type || '—', item.color || '—', item.dimensions || '—',
+        `${item.quantity} ${item.unit}`, item.place || 'Sin asignar', item.operationalState || 'Operativo', item.state || '—', item.notes || '—',
+      ]),
+      fontSize: 7,
+      columnStyles: {
+        0: { cellWidth: 16 }, 1: { cellWidth: 24 }, 2: { cellWidth: 40 }, 3: { cellWidth: 18 }, 4: { cellWidth: 16 }, 5: { cellWidth: 24 },
+        6: { cellWidth: 16, halign: 'center' }, 7: { cellWidth: 30 }, 8: { cellWidth: 19 }, 9: { cellWidth: 15 },
+      },
+    }).then(() => toast('Inventario exportado a PDF.')).catch(() => toast('No se pudo generar el PDF.', 'bad'))
+  }
+
   function openNew() {
     setEditingId(null)
     setForm(emptyMaterial)
@@ -227,6 +246,7 @@ export default function MaterialsPage() {
         actions={(
           <>
             <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
+            <Button type="button" variant="outline" onClick={exportPdf}><FileText className="text-[#b4413c]" /> Exportar PDF</Button>
             {canEdit && (
               <>
                 <Button type="button" variant="outline" disabled={downloading} onClick={downloadTemplate}><FileDown /> {downloading ? 'Preparando…' : 'Descargar formato'}</Button>

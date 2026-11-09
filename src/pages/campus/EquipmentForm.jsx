@@ -12,6 +12,7 @@ import {
   Headphones,
   Image as ImageIcon,
   Layers,
+  Link2,
   Monitor,
   Mouse,
   Keyboard,
@@ -151,6 +152,10 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
   const [tab, setTab] = useState('general')
   const [photo, setPhoto] = useState(null)
   const [preview, setPreview] = useState(null)
+  // Alternative to the file: an image published on the internet.
+  const [photoUrl, setPhotoUrl] = useState('')
+  const [urlDraft, setUrlDraft] = useState('')
+  const [checkingUrl, setCheckingUrl] = useState(false)
   const [savedPhotos, setSavedPhotos] = useState([])
   const [busy, setBusy] = useState(false)
   const [showErrors, setShowErrors] = useState(false)
@@ -181,7 +186,7 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
     const need = (key, label) => { if (!String(form[key] ?? '').trim()) list[key] = `${label} es obligatorio.` }
     need('patrimonial', 'El código patrimonial')
     need('level', 'El nivel educativo')
-    need('name', 'La denominación')
+    need('name', 'La descripción')
     need('categoryId', 'La categoría')
     need('type', 'El tipo')
     need('brand', 'La marca')
@@ -235,6 +240,9 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
     if (photo) {
       const sent = await upload(`/api/equipment/${id}/photos`, [photo])
       if (!sent.ok) toast(`El bien se guardó, pero no la imagen. ${sent.error || ''}`.trim(), 'bad')
+    } else if (photoUrl) {
+      const sent = await api(`/api/equipment/${id}/photo-url`, { method: 'POST', body: { url: photoUrl } })
+      if (!sent.ok) toast(`El bien se guardó, pero no la imagen. ${sent.error || ''}`.trim(), 'bad')
     }
     setBusy(false)
     toast(editing ? 'Bien tecnológico actualizado.' : `Bien ${result.code || ''} registrado en el inventario.`)
@@ -247,8 +255,24 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
     setSavedPhotos((current) => current.filter((entry) => entry.id !== item.id))
   }
 
+  /** Checks that the link is http(s) and really loads as an image before using it. */
+  function applyImageUrl() {
+    const value = urlDraft.trim()
+    let parsed = null
+    try { parsed = new URL(value) } catch { parsed = null }
+    if (!parsed || !['http:', 'https:'].includes(parsed.protocol)) return toast('Escribe un enlace que empiece con http:// o https://.', 'bad')
+    if (value.length > 1024) return toast('El enlace es demasiado largo.', 'bad')
+    setCheckingUrl(true)
+    const probe = new window.Image()
+    probe.onload = () => { setCheckingUrl(false); setPhoto(null); setPhotoUrl(parsed.href); setUrlDraft('') }
+    probe.onerror = () => { setCheckingUrl(false); toast('No se pudo cargar una imagen desde ese enlace. Verifica que sea la dirección directa de una imagen pública.', 'bad') }
+    probe.src = parsed.href
+  }
+
   const tabIndex = TABS.findIndex((item) => item.id === tab)
-  const imageSrc = preview || savedPhotos[0]?.path
+  const pendingImage = Boolean(preview || photoUrl)
+  const imageSrc = preview || photoUrl || savedPhotos[0]?.path
+  const hasSaved = savedPhotos.length > 0 && !pendingImage
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -287,9 +311,9 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
                 <Section icon={Layers} title="Identificación del bien">
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                     <F label="Código interno"><Input value={form.code} onChange={(e) => set({ code: e.target.value.toUpperCase() })} placeholder={editing ? '' : 'Automático (EQ-…)'} /></F>
-                    <F label="Código patrimonial MINEDU" required className="sm:col-span-2" error={err('patrimonial')}><PatrimonialCodePicker value={form.patrimonial} invalid={Boolean(err('patrimonial'))} onChange={(patrimonial, entry) => set({ patrimonial, ...(!form.name.trim() && entry ? { name: entry.description.toUpperCase() } : {}) })} /></F>
+                    <F label="Código patrimonial MINEDU" required className="sm:col-span-2" error={err('patrimonial')}><PatrimonialCodePicker value={form.patrimonial} invalid={Boolean(err('patrimonial'))} onChange={(patrimonial, entry) => set({ patrimonial, ...(entry ? { name: entry.description.toUpperCase() } : {}) })} /></F>
                     <F label="Nivel educativo" required error={err('level')}><Select value={form.level} onChange={(level) => set({ level })} options={opts(LEVELS)} /></F>
-                    <F label="Denominación" required className="sm:col-span-2 lg:col-span-4" error={err('name')}><Input value={form.name} onChange={(e) => set({ name: e.target.value.toUpperCase() })} placeholder="COMPUTADORA PERSONAL PORTÁTIL" /></F>
+                    <F label="Descripción" required className="sm:col-span-2 lg:col-span-4" error={err('name')}><Input value={form.name} onChange={(e) => set({ name: e.target.value.toUpperCase() })} placeholder="COMPUTADORA PERSONAL PORTÁTIL" /></F>
                     <F label="Categoría" required error={err('categoryId')}><Select value={form.categoryId} onChange={(categoryId) => set({ categoryId })} options={[{ value: '', label: 'Seleccione' }, ...categories.map((item) => ({ value: String(item.id), label: item.name }))]} /></F>
                     <F label="Tipo" required error={err('type')}><SuggestInput id="eq-types" options={TYPES} value={form.type} onChange={(e) => set({ type: e.target.value })} placeholder="Portátil" /></F>
                     <F label="Marca" required error={err('brand')}><Input value={form.brand} onChange={(e) => set({ brand: e.target.value })} placeholder="Lenovo" /></F>
@@ -337,15 +361,34 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
               <Section icon={ImageIcon} title="Imagen del bien" className="h-fit">
                 <div className="relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-border bg-slate-50 dark:bg-muted">
                   {imageSrc ? <img src={imageSrc} alt="Imagen del bien" className="size-full object-contain" /> : <Camera className="size-10 text-muted-foreground/50" />}
-                  {(preview || savedPhotos[0]) && (
-                    <button type="button" onClick={() => (preview ? setPhoto(null) : removeSaved(savedPhotos[0]))} className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-lg border border-border bg-card text-[#b4413c] shadow-sm hover:bg-muted" aria-label="Quitar imagen"><Trash2 className="size-4" /></button>
+                  {(pendingImage || savedPhotos[0]) && (
+                    <button type="button" onClick={() => (pendingImage ? (setPhoto(null), setPhotoUrl('')) : removeSaved(savedPhotos[0]))} className="absolute right-2 top-2 flex size-8 items-center justify-center rounded-lg border border-border bg-card text-[#b4413c] shadow-sm hover:bg-muted" aria-label="Quitar imagen"><Trash2 className="size-4" /></button>
                   )}
                 </div>
-                <label className={cn('mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary/30 bg-slate-50 px-3 py-2 text-sm font-semibold text-primary hover:bg-muted dark:bg-muted', savedPhotos.length && !preview && 'pointer-events-none opacity-50')}>
+                <label className={cn('mt-3 flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-primary/30 bg-slate-50 px-3 py-2 text-sm font-semibold text-primary hover:bg-muted dark:bg-muted', hasSaved && 'pointer-events-none opacity-50')}>
                   <Upload className="size-4" /> Seleccionar imagen
-                  <input type="file" accept="image/jpeg,image/png" className="sr-only" disabled={savedPhotos.length > 0 && !preview} onChange={(e) => { setPhoto(e.target.files?.[0] || null); e.target.value = '' }} />
+                  <input type="file" accept="image/jpeg,image/png" className="sr-only" disabled={hasSaved} onChange={(e) => { const file = e.target.files?.[0] || null; if (file) setPhotoUrl(''); setPhoto(file); e.target.value = '' }} />
                 </label>
-                <p className="mt-2 text-center text-xs text-muted-foreground">Formatos: JPG, PNG. Máx. 5 MB.{savedPhotos.length > 0 && !preview ? ' Quita la imagen actual para reemplazarla.' : ''}</p>
+                <div className="my-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" /> o usa un enlace <span className="h-px flex-1 bg-border" />
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    type="url"
+                    inputMode="url"
+                    value={urlDraft}
+                    disabled={hasSaved}
+                    onChange={(e) => setUrlDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (urlDraft.trim()) applyImageUrl() } }}
+                    placeholder="https://…/imagen.jpg"
+                    aria-label="Enlace de la imagen"
+                  />
+                  <Button type="button" variant="outline" disabled={hasSaved || !urlDraft.trim() || checkingUrl} onClick={applyImageUrl}>
+                    <Link2 /> {checkingUrl ? 'Verificando…' : 'Usar'}
+                  </Button>
+                </div>
+                {photoUrl && <p className="mt-1.5 truncate text-xs text-muted-foreground" title={photoUrl}>Enlace: {photoUrl}</p>}
+                <p className="mt-2 text-center text-xs text-muted-foreground">Archivo: JPG o PNG, máx. 5 MB. Enlace: dirección directa de una imagen pública.{hasSaved ? ' Quita la imagen actual para reemplazarla.' : ''}</p>
               </Section>
             </div>
           )}
