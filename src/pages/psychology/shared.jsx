@@ -98,13 +98,13 @@ export function StudentPicker({ value, onChange }) {
   )
 }
 
-const emptyCase = () => ({ studentId: null, openedOn: todayLima(), reason: '', referredBy: '', referrerName: '', riskLevel: 'Bajo', status: 'Abierto', description: '' })
+const emptyCase = () => ({ studentId: null, openedOn: todayLima(), reason: '', referredBy: '', referrerName: '', riskLevel: 'Bajo', status: 'Abierto', description: '', adminReason: '', adminNotes: '' })
 
 /** Create (no `item`) or edit a case. */
 export function CaseForm({ item, initialStudentId = null, onClose, onSaved }) {
   const { toast } = useApp()
   const [form, setForm] = useState(() => (item
-    ? { studentId: item.student.id, openedOn: item.openedOn, reason: item.reason, referredBy: item.referredBy, referrerName: item.referrerName, riskLevel: item.riskLevel, status: item.status, description: item.description || '' }
+    ? { studentId: item.student.id, openedOn: item.openedOn, reason: item.reason, referredBy: item.referredBy, referrerName: item.referrerName, riskLevel: item.riskLevel, status: item.status, description: item.description || '', adminReason: item.adminReason || '', adminNotes: item.adminNotes || '' }
     : { ...emptyCase(), studentId: initialStudentId }))
   const [saving, setSaving] = useState(false)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
@@ -143,6 +143,9 @@ export function CaseForm({ item, initialStudentId = null, onClose, onSaved }) {
           <Label label="Descripción de la situación" className="sm:col-span-2">
             <Textarea rows={4} value={form.description} onChange={(event) => set({ description: event.target.value })} maxLength={4000} placeholder="Qué se observó, desde cuándo, antecedentes relevantes…" />
           </Label>
+          <p className="text-xs text-muted-foreground sm:col-span-2">Los dos campos siguientes son un resumen <strong>no confidencial</strong> que aparece en el reporte administrativo exportado. No escribas aquí detalles clínicos.</p>
+          <Label label="Motivo administrativo breve" className="sm:col-span-2"><Input value={form.adminReason} onChange={(event) => set({ adminReason: event.target.value })} maxLength={160} placeholder="Ej. Dificultades de adaptación al aula" /></Label>
+          <Label label="Observación administrativa" className="sm:col-span-2"><Textarea rows={2} value={form.adminNotes} onChange={(event) => set({ adminNotes: event.target.value })} maxLength={500} placeholder="Ej. Se coordinó con tutoría el seguimiento quincenal" /></Label>
         </form>
         <DialogFooter>
           <Button type="button" variant="outline" disabled={saving} onClick={onClose}>Cancelar</Button>

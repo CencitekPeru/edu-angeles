@@ -45,9 +45,14 @@ import {
   useStudents,
 } from './shared'
 
-const EMPTY = { dni: '', lastNames: '', firstNames: '', gender: '', birthDate: '', level: 'Primaria', grade: '1°', section: 'A', guardian: '', guardianDni: '', phone: '' }
-const TEMPLATE_HEADERS = ['DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono']
+const EMPTY = {
+  dni: '', lastNames: '', firstNames: '', gender: '', birthDate: '', level: 'Primaria', grade: '1°', section: 'A', shift: '',
+  guardian: '', guardianDni: '', guardianRelationship: '', phone: '', phoneAlt: '', guardianEmail: '',
+}
+const TEMPLATE_HEADERS = ['DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Nivel', 'Grado', 'Sección', 'Turno', 'Apoderado', 'Parentesco', 'DNI apoderado', 'Teléfono', 'Teléfono alternativo', 'Correo apoderado']
 const GENDERS = ['Masculino', 'Femenino']
+const SHIFTS = ['Mañana', 'Tarde']
+const RELATIONSHIPS = ['Madre', 'Padre', 'Abuelo(a)', 'Tío(a)', 'Hermano(a)', 'Tutor(a) legal', 'Otro']
 
 /** Age in whole years for an ISO birth date, or null. */
 export function ageFrom(iso) {
@@ -96,7 +101,7 @@ async function downloadTemplate() {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Estudiantes')
   sheet.columns = TEMPLATE_HEADERS.map((header) => ({ header, width: header === 'Apellidos' || header === 'Nombres' || header === 'Apoderado' ? 26 : 14 }))
-  sheet.addRow(['71234567', 'Huamán Rojas', 'Daniel', 'Masculino', '14/05/2011', 'Secundaria', '5', 'A', 'Rosa Rojas', '41234567', '987654321'])
+  sheet.addRow(['71234567', 'Huamán Rojas', 'Daniel', 'Masculino', '14/05/2011', 'Secundaria', '5', 'A', 'Mañana', 'Rosa Rojas', 'Madre', '41234567', '987654321', '912345678', 'rosa.rojas@correo.com'])
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }
   const buffer = await workbook.xlsx.writeBuffer()
@@ -147,10 +152,11 @@ export default function StudentsPage() {
       title: 'Relación de estudiantes',
       subtitle: applied.length ? `Filtros: ${applied.join(' · ')}` : 'Todos los estudiantes activos',
       summary: [['Estudiantes', students.length], ['Primaria', students.filter((item) => item.level === 'Primaria').length], ['Secundaria', students.filter((item) => item.level === 'Secundaria').length]],
-      headers: ['Código', 'DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Edad', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono', 'QR activo'],
-      widths: [12, 12, 26, 24, 12, 14, 7, 12, 8, 9, 28, 14, 14, 10],
+      headers: ['Código', 'DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Edad', 'Nivel', 'Grado', 'Sección', 'Turno', 'Apoderado', 'Parentesco', 'DNI apoderado', 'Teléfono', 'Teléfono alternativo', 'Correo apoderado', 'QR activo'],
+      widths: [12, 12, 26, 24, 12, 14, 7, 12, 8, 9, 10, 28, 13, 14, 14, 16, 28, 10],
       rows: students.map((item) => [item.code, item.dni || '—', item.lastNames, item.firstNames, item.gender || '—', dmyDate(item.birthDate) || '—', ageFrom(item.birthDate) ?? '—',
-        item.level, item.grade, item.section, item.guardian || '—', item.guardianDni || '—', item.phone || '—', item.qrActive ? 'Sí' : 'No']),
+        item.level, item.grade, item.section, item.shift || '—', item.guardian || '—', item.guardianRelationship || '—', item.guardianDni || '—', item.phone || '—',
+        item.phoneAlt || '—', item.guardianEmail || '—', item.qrActive ? 'Sí' : 'No']),
     }).then(() => toast('Estudiantes exportados a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
   }
 
@@ -361,9 +367,17 @@ function StudentDialog({ student, onClose, onSaved }) {
             </FilterLabel>
             <FilterLabel label="Grado *"><Select value={form.grade} onChange={(grade) => setForm({ ...form, grade })} options={grades.map((value) => ({ value, label: `${value} Grado` }))} /></FilterLabel>
             <FilterLabel label="Sección *"><Input {...field('section')} maxLength={6} required className="uppercase" /></FilterLabel>
+            <FilterLabel label="Turno">
+              <Select value={form.shift || ''} onChange={(shift) => setForm({ ...form, shift })} options={[{ value: '', label: 'Seleccione' }, ...SHIFTS.map((value) => ({ value, label: value }))]} />
+            </FilterLabel>
             <FilterLabel label="Apoderado (nombre)"><Input {...field('guardian')} /></FilterLabel>
+            <FilterLabel label="Parentesco">
+              <Select value={form.guardianRelationship || ''} onChange={(guardianRelationship) => setForm({ ...form, guardianRelationship })} options={[{ value: '', label: 'Seleccione' }, ...RELATIONSHIPS.map((value) => ({ value, label: value }))]} />
+            </FilterLabel>
             <FilterLabel label="DNI del apoderado"><Input value={form.guardianDni} onChange={(event) => setForm({ ...form, guardianDni: event.target.value.replace(/\D/g, '').slice(0, 8) })} inputMode="numeric" maxLength={8} pattern="\d{8}" title="8 dígitos" placeholder="Para el Portal de Padres" /></FilterLabel>
-            <FilterLabel label="Teléfono del apoderado" className="sm:col-span-2"><Input {...field('phone')} inputMode="tel" /></FilterLabel>
+            <FilterLabel label="Teléfono del apoderado"><Input {...field('phone')} inputMode="tel" /></FilterLabel>
+            <FilterLabel label="Teléfono alternativo"><Input value={form.phoneAlt || ''} onChange={(event) => setForm({ ...form, phoneAlt: event.target.value })} inputMode="tel" /></FilterLabel>
+            <FilterLabel label="Correo del apoderado" className="sm:col-span-2"><Input type="email" value={form.guardianEmail || ''} onChange={(event) => setForm({ ...form, guardianEmail: event.target.value })} placeholder="correo@ejemplo.com" maxLength={120} /></FilterLabel>
             <p className="text-xs text-muted-foreground sm:col-span-2">Con el DNI del apoderado se habilita su acceso al Portal de Padres: ingresará solo con ese DNI para consultar la asistencia.</p>
           </div>
           <DialogFooter className="sm:col-span-2">
@@ -402,12 +416,14 @@ function StudentView({ student, onClose }) {
             <dt className="text-muted-foreground">DNI</dt><dd>{student.dni || '—'}</dd>
             <dt className="text-muted-foreground">Género</dt><dd>{student.gender || '—'}</dd>
             <dt className="text-muted-foreground">Nacimiento</dt><dd>{student.birthDate ? `${dmyDate(student.birthDate)} (${ageFrom(student.birthDate)} años)` : '—'}</dd>
-            <dt className="text-muted-foreground">Apoderado</dt><dd>{student.guardian || '—'}</dd>
+            <dt className="text-muted-foreground">Turno</dt><dd>{student.shift || '—'}</dd>
+            <dt className="text-muted-foreground">Apoderado</dt><dd>{student.guardian || '—'}{student.guardianRelationship ? ` (${student.guardianRelationship})` : ''}</dd>
             <dt className="text-muted-foreground">DNI apoderado</dt>
             <dd className="flex flex-wrap items-center gap-2">
               {student.guardianDni ? `${student.guardianDni} (acceso al Portal de Padres)` : 'Sin acceso al portal'}
             </dd>
-            <dt className="text-muted-foreground">Teléfono</dt><dd>{student.phone || '—'}</dd>
+            <dt className="text-muted-foreground">Teléfono</dt><dd>{[student.phone, student.phoneAlt].filter(Boolean).join(' · ') || '—'}</dd>
+            <dt className="text-muted-foreground">Correo</dt><dd className="break-all">{student.guardianEmail || '—'}</dd>
             <dt className="text-muted-foreground">QR</dt><dd>{student.qrActive ? 'Activo' : 'Desactivado'}</dd>
             <dt className="text-muted-foreground">Hoy</dt><dd>{student.today ? <StatusChip status={student.today.status} /> : 'Sin registro'}</dd>
           </dl>
@@ -451,6 +467,9 @@ function ImportDialog({ onClose, onDone }) {
       const col = (name) => header.findIndex((value) => value && value.normalize('NFD').replace(/[̀-ͯ]/g, '').startsWith(name))
       const map = { dni: col('dni'), lastNames: col('apellido'), firstNames: col('nombre'), gender: col('genero'), birthDate: col('fecha'), level: col('nivel'), grade: col('grado'), section: col('secc'), guardian: col('apoderado'), guardianDni: col('dni apod'), phone: col('telef') }
       if (map.gender < 0) map.gender = col('sexo')
+      Object.assign(map, { shift: col('turno'), guardianRelationship: col('parentesco'), phoneAlt: col('telefono alt'), guardianEmail: col('correo') })
+      // «Teléfono alternativo» also starts with «telef»: the main phone is the other one.
+      map.phone = header.findIndex((value, index) => value && index !== map.phoneAlt && value.normalize('NFD').replace(/[̀-ͯ]/g, '').startsWith('telef'))
       // "DNI apoderado" also starts with "dni": make sure the student DNI column is the plain one.
       map.dni = header.findIndex((value) => value === 'dni')
       if (map.lastNames < 0 || map.firstNames < 0 || map.level < 0 || map.grade < 0 || map.section < 0) {
@@ -476,6 +495,10 @@ function ImportDialog({ onClose, onDone }) {
           guardian: get('guardian'),
           guardianDni: get('guardianDni').replace(/\D/g, ''),
           phone: get('phone'),
+          shift: get('shift'),
+          guardianRelationship: get('guardianRelationship'),
+          phoneAlt: get('phoneAlt'),
+          guardianEmail: get('guardianEmail'),
         })
       })
       setRows(parsed)

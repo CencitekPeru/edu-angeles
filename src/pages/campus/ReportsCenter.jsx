@@ -248,7 +248,8 @@ async function exportExcel(report, subtitle, code) {
   sheet.getCell(3, 1).font = { size: 9, italic: true, color: { argb: 'FF64748B' } }
   ;[1, 2, 3].forEach((row) => { sheet.getCell(row, 1).alignment = { vertical: 'middle', indent: 1 } })
   const header = sheet.getRow(headerRow)
-  header.values = [undefined, ...report.headers]
+  // Plain array: titles start at column A, aligned with the data rows.
+  header.values = report.headers
   header.height = 22
   header.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }

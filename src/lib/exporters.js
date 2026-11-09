@@ -77,7 +77,8 @@ export async function exportTableXlsx({ title, subtitle = '', headers, rows, wid
   })
   const headerRow = lines.length + 2
   const header = sheet.getRow(headerRow)
-  header.values = [undefined, ...headers]
+  // A plain array starts at column A, the same as the data rows below (a leading `undefined` would shift every title one column right).
+  header.values = headers
   header.eachCell((cell) => {
     cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }

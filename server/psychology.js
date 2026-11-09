@@ -75,6 +75,8 @@ function mapCase(row) {
     riskLevel: row.risk_level,
     status: row.status,
     createdBy: row.created_by_name || '',
+    adminReason: row.admin_reason || '',
+    adminNotes: row.admin_notes || '',
     sessionsDone: Number(row.sessions_done || 0),
     lastSession: row.last_session,
     nextSession: row.next_session,
@@ -146,6 +148,8 @@ function caseInput(body) {
     description: text(body.description, 4000),
     riskLevel: oneOf(PSY_RISKS, body.riskLevel, 'Bajo'),
     status: oneOf(PSY_CASE_STATUS, body.status, 'Abierto'),
+    adminReason: text(body.adminReason, 160),
+    adminNotes: text(body.adminNotes, 500),
   }
 }
 
@@ -248,10 +252,10 @@ export function psychologyRouter() {
     if (open.length) return res.status(409).json({ ok: false, error: `El estudiante ya tiene un caso abierto (${open[0].code}). Registra la atención como una nueva sesión de ese caso.` })
     const code = await nextCaseCode(db)
     const [created] = await db.query(
-      `INSERT INTO psych_cases (code, student_id, opened_on, reason, referred_by, referrer_name, description, risk_level, status, closed_on, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO psych_cases (code, student_id, opened_on, reason, referred_by, referrer_name, description, risk_level, status, closed_on, created_by, admin_reason, admin_notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [code, input.studentId, input.openedOn, input.reason, input.referredBy, input.referrerName, input.description, input.riskLevel, input.status,
-        input.status === 'Cerrado' ? nowLima().date : null, req.user.id],
+        input.status === 'Cerrado' ? nowLima().date : null, req.user.id, input.adminReason, input.adminNotes],
     )
     res.status(201).json({ ok: true, id: created.insertId, code })
   }))
@@ -261,9 +265,10 @@ export function psychologyRouter() {
     if (!input.reason || !input.referredBy) return res.status(400).json({ ok: false, error: 'Completa el motivo y quién deriva el caso.' })
     const [result] = await getPool().query(
       `UPDATE psych_cases SET opened_on = ?, reason = ?, referred_by = ?, referrer_name = ?, description = ?, risk_level = ?, status = ?,
-         closed_on = IF(? = 'Cerrado', COALESCE(closed_on, ?), NULL)
+         closed_on = IF(? = 'Cerrado', COALESCE(closed_on, ?), NULL), admin_reason = ?, admin_notes = ?
        WHERE id = ?`,
-      [input.openedOn, input.reason, input.referredBy, input.referrerName, input.description, input.riskLevel, input.status, input.status, nowLima().date, req.params.id],
+      [input.openedOn, input.reason, input.referredBy, input.referrerName, input.description, input.riskLevel, input.status, input.status, nowLima().date,
+        input.adminReason, input.adminNotes, req.params.id],
     )
     if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'El caso ya no existe.' })
     res.json({ ok: true })
@@ -324,6 +329,112 @@ export function psychologyRouter() {
     const [result] = await getPool().query('DELETE FROM psych_sessions WHERE id = ?', [req.params.id])
     if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'La sesión ya no existe.' })
     res.json({ ok: true })
+  }))
+
+  /**
+   * Administrative report: one row per attention in the period, with the student's data, the case
+   * follow-up (appointments, referral, guardian contact) and the student's school attendance in the
+   * month of the attention. Clinical notes are never included.
+   */
+  router.get('/api/psychology/export', wrap(async (req, res) => {
+    if (!isDate(req.query.from) || !isDate(req.query.to)) return res.status(400).json({ ok: false, error: 'Indica el periodo del reporte.' })
+    const db = getPool()
+    const { date: today } = nowLima()
+    const [rows] = await db.query(
+      `SELECT x.id AS attention_id, DATE_FORMAT(x.date, '%Y-%m-%d') AS day, TIME_FORMAT(x.time, '%H:%i') AS hour, x.type, x.status AS attention_status,
+              u.name AS psychologist, c.id AS case_id, c.reason, c.admin_reason, c.admin_notes, c.status AS case_status,
+              s.id AS student_id, s.code AS student_code, s.dni, s.first_names, s.last_names, DATE_FORMAT(s.birth_date, '%Y-%m-%d') AS birth,
+              s.level, s.grade, s.section, s.shift, s.guardian, s.guardian_relationship, s.phone, s.phone_alt, s.guardian_email
+         FROM psych_sessions x
+         JOIN psych_cases c ON c.id = x.case_id
+         JOIN students s ON s.id = c.student_id
+         LEFT JOIN users u ON u.id = x.created_by
+        WHERE x.date BETWEEN ? AND ?
+        ORDER BY x.date, x.time`,
+      [req.query.from, req.query.to],
+    )
+    if (!rows.length) return res.json({ ok: true, rows: [] })
+    const caseIds = [...new Set(rows.map((row) => row.case_id))]
+    const studentIds = [...new Set(rows.map((row) => row.student_id))]
+    const [counts] = await db.query(
+      `SELECT case_id, SUM(status <> 'Cancelada') AS scheduled, SUM(status = 'Realizada') AS attended, SUM(status = 'No asistió') AS missed,
+              MIN(IF(status = 'Programada' AND date >= ?, CONCAT(DATE_FORMAT(date, '%Y-%m-%d'), ' ', TIME_FORMAT(time, '%H:%i')), NULL)) AS next_one,
+              MAX(IF(status = 'Realizada' AND type = 'Familiar', DATE_FORMAT(date, '%Y-%m-%d'), NULL)) AS guardian_contact
+         FROM psych_sessions WHERE case_id IN (?) GROUP BY case_id`,
+      [today, caseIds],
+    )
+    const [referrals] = await db.query(
+      `SELECT r.case_id, r.institution, r.status FROM psych_referrals r
+         JOIN (SELECT case_id, MAX(id) AS id FROM psych_referrals WHERE case_id IN (?) GROUP BY case_id) last ON last.id = r.id`,
+      [caseIds],
+    )
+    const [school] = await db.query(
+      `SELECT student_id, DATE_FORMAT(date, '%Y-%m') AS month, SUM(status = 'presente') AS present, SUM(status = 'tardanza') AS late, SUM(status = 'inasistencia') AS absent
+         FROM attendance WHERE student_id IN (?) GROUP BY student_id, DATE_FORMAT(date, '%Y-%m')`,
+      [studentIds],
+    )
+    const byCase = new Map(counts.map((row) => [row.case_id, row]))
+    const referralOf = new Map(referrals.map((row) => [row.case_id, row]))
+    const schoolOf = new Map(school.map((row) => [`${row.student_id}|${row.month}`, row]))
+    const ageAt = (birth, on) => {
+      if (!birth) return ''
+      const [by, bm, bd] = birth.split('-').map(Number)
+      const [y, m, d] = on.split('-').map(Number)
+      return y - by - (m < bm || (m === bm && d < bd) ? 1 : 0)
+    }
+    const attended = { Realizada: 'Sí', 'No asistió': 'No' }
+    res.json({
+      ok: true,
+      rows: rows.map((row) => {
+        const totals = byCase.get(row.case_id) || {}
+        const referral = referralOf.get(row.case_id)
+        const month = row.day.slice(0, 7)
+        const schoolMonth = schoolOf.get(`${row.student_id}|${month}`) || {}
+        return {
+          attentionId: row.attention_id,
+          studentId: row.student_id,
+          studentCode: row.student_code,
+          fullName: `${row.last_names}, ${row.first_names}`,
+          dni: row.dni || '',
+          birthDate: row.birth || '',
+          age: ageAt(row.birth, row.day),
+          level: row.level,
+          grade: row.grade,
+          section: row.section,
+          shift: row.shift || '',
+          guardian: row.guardian || '',
+          relationship: row.guardian_relationship || '',
+          phone: row.phone || '',
+          phoneAlt: row.phone_alt || '',
+          guardianEmail: row.guardian_email || '',
+          date: row.day,
+          time: row.hour,
+          attentionCode: `AT-${String(row.attention_id).padStart(5, '0')}`,
+          type: row.type,
+          category: row.reason,
+          adminReason: row.admin_reason || '',
+          attentionStatus: row.attention_status,
+          psychologist: row.psychologist || '',
+          attended: attended[row.attention_status] || '—',
+          scheduled: Number(totals.scheduled || 0),
+          attendedCount: Number(totals.attended || 0),
+          missedCount: Number(totals.missed || 0),
+          nextAppointment: totals.next_one || '',
+          followUp: row.case_status,
+          referred: referral ? 'Sí' : 'No',
+          referralDestination: referral?.institution || '',
+          referralStatus: referral?.status || '',
+          guardianContact: totals.guardian_contact ? 'Sí' : 'No',
+          contactDate: totals.guardian_contact || '',
+          adminNotes: row.admin_notes || '',
+          schoolPresent: Number(schoolMonth.present || 0),
+          schoolLate: Number(schoolMonth.late || 0),
+          schoolAbsent: Number(schoolMonth.absent || 0),
+          reportMonth: month.slice(5),
+          reportYear: month.slice(0, 4),
+        }
+      }),
+    })
   }))
 
   /** Referrals of a case to an outside institution (health centre, DEMUNA, CEM…) and their follow-up. */
@@ -405,6 +516,10 @@ export async function ensurePsychology() {
     INDEX idx_psych_sessions_date (date, time),
     CONSTRAINT fk_psych_sessions_case FOREIGN KEY (case_id) REFERENCES psych_cases(id) ON DELETE CASCADE
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  for (const [name, type] of [['admin_reason', "VARCHAR(160) NOT NULL DEFAULT ''"], ['admin_notes', "VARCHAR(500) NOT NULL DEFAULT ''"]]) {
+    const [existing] = await db.query('SHOW COLUMNS FROM psych_cases LIKE ?', [name])
+    if (!existing.length) await db.query(`ALTER TABLE psych_cases ADD COLUMN ${name} ${type}`)
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS psych_referrals (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     case_id INT UNSIGNED NOT NULL,
