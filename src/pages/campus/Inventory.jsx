@@ -13,6 +13,7 @@ import { Filters, PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { ImportInventoryDialog, downloadInventoryTemplate } from './InventoryImport'
 import { EquipmentForm, LEVELS } from './EquipmentForm'
 import { usePatrimonialCodes } from './PatrimonialCodePicker'
+import { ImportPatrimonialCodesDialog } from './PatrimonialCodesImport'
 import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
 
 /** Tabs shared by the inventory views (tecnológicos, mobiliarios, ambientes). */
@@ -388,6 +389,7 @@ function PatrimonialCodesPanel({ canEdit }) {
   const { toast } = useApp()
   const [codes, reload] = usePatrimonialCodes()
   const [draft, setDraft] = useState(null)
+  const [importing, setImporting] = useState(false)
   const [saving, setSaving] = useState(false)
   const items = codes.map((item) => ({ id: item.id, name: `${item.code} · ${item.description}`, code: item.code, description: item.description }))
 
@@ -413,9 +415,18 @@ function PatrimonialCodesPanel({ canEdit }) {
   }
 
   return (
-    <Panel title="Códigos patrimoniales" action={canEdit && <Button type="button" size="sm" onClick={() => setDraft({ code: '', description: '' })}>Nuevo código</Button>}>
+    <Panel
+      title="Códigos patrimoniales"
+      action={canEdit && (
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Button type="button" size="sm" variant="outline" onClick={() => setImporting(true)}><FileUp /> Importar Excel</Button>
+          <Button type="button" size="sm" onClick={() => setDraft({ code: '', description: '' })}>Nuevo código</Button>
+        </div>
+      )}
+    >
       <p className="mb-3 text-xs text-muted-foreground">Se eligen al registrar bienes tecnológicos y mobiliarios. {codes.length} códigos en el catálogo.</p>
       <CatalogList items={items} label="Código" canEdit={canEdit} empty="No hay códigos registrados." onEdit={(item) => setDraft({ id: item.id, code: item.code, description: item.description })} onRemove={remove} />
+      {importing && <ImportPatrimonialCodesDialog existing={codes} onClose={() => setImporting(false)} onDone={reload} />}
       <Dialog open={Boolean(draft)} onOpenChange={(next) => { if (!next && !saving) setDraft(null) }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader className="border-b border-border/70 pb-4">

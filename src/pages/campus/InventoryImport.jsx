@@ -354,8 +354,9 @@ const STATUS_STYLE = {
   update: 'text-primary',
   duplicate: 'text-destructive',
   incomplete: 'text-destructive',
+  same: 'text-muted-foreground',
 }
-const STATUS_LABEL = { new: 'Nuevo', update: 'Actualiza', duplicate: 'Repetido', incomplete: 'Incompleto' }
+const STATUS_LABEL = { new: 'Nuevo', update: 'Actualiza', duplicate: 'Repetido', incomplete: 'Incompleto', same: 'Sin cambios' }
 
 /** Import preview cell: what will happen with the row. */
 export function ImportStatus({ row }) {

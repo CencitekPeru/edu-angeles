@@ -308,6 +308,55 @@ export function campusRouter() {
       connection.release()
     }
   }))
+  router.post('/api/patrimonial-codes/import', requireAuth, requireAdmin, wrap(async (req, res) => {
+    const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 5000) : []
+    if (!items.length) return res.status(400).json({ ok: false, error: 'El archivo no tiene códigos para importar.' })
+    const errors = []
+    const rows = []
+    const repeated = duplicateLines(items, [['code', 'código patrimonial']])
+    items.forEach((raw, index) => {
+      const line = Number(raw.row) || index + 1
+      const problems = [...(repeated.get(line) || [])]
+      const code = String(raw.code ?? '').replace(/\s+/g, '').trim()
+      const description = String(raw.description ?? '').replace(/\s+/g, ' ').trim().toUpperCase()
+      if (!code) problems.push('falta el código patrimonial')
+      else if (!/^[0-9-]{6,20}$/.test(code)) problems.push(`código «${code}» no válido (solo números, de 6 a 20 dígitos)`)
+      if (!description) problems.push('falta la descripción')
+      else if (description.length < 3) problems.push('la descripción es muy corta')
+      else if (description.length > 255) problems.push('la descripción admite hasta 255 caracteres')
+      if (problems.length) errors.push(`Fila ${line}: ${problems.join(', ')}.`)
+      else rows.push({ code, description })
+    })
+
+    const connection = await getPool().getConnection()
+    let created = 0
+    let updated = 0
+    let unchanged = 0
+    try {
+      await connection.beginTransaction()
+      const [current] = await connection.query('SELECT id, code, description FROM patrimonial_codes')
+      const byCode = new Map(current.map((item) => [item.code, item]))
+      for (const { code, description } of rows) {
+        const existing = byCode.get(code)
+        if (!existing) {
+          await connection.query('INSERT INTO patrimonial_codes (code, description) VALUES (?, ?)', [code, description])
+          created += 1
+        } else if (existing.description !== description) {
+          await connection.query('UPDATE patrimonial_codes SET description = ? WHERE id = ?', [description, existing.id])
+          updated += 1
+        } else {
+          unchanged += 1
+        }
+      }
+      await connection.commit()
+    } catch (error) {
+      await connection.rollback()
+      throw error
+    } finally {
+      connection.release()
+    }
+    res.json({ ok: true, created, updated, unchanged, skipped: errors.length, errors })
+  }))
   router.delete('/api/patrimonial-codes/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const [result] = await getPool().query('DELETE FROM patrimonial_codes WHERE id = ?', [req.params.id])
     if (!result.affectedRows) return res.status(404).json({ ok: false, error: 'El código ya no existe.' })
