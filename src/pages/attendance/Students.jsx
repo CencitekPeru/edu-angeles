@@ -45,8 +45,32 @@ import {
   useStudents,
 } from './shared'
 
-const EMPTY = { dni: '', lastNames: '', firstNames: '', level: 'Primaria', grade: '1°', section: 'A', guardian: '', guardianDni: '', phone: '' }
-const TEMPLATE_HEADERS = ['DNI', 'Apellidos', 'Nombres', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono']
+const EMPTY = { dni: '', lastNames: '', firstNames: '', gender: '', birthDate: '', level: 'Primaria', grade: '1°', section: 'A', guardian: '', guardianDni: '', phone: '' }
+const TEMPLATE_HEADERS = ['DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono']
+const GENDERS = ['Masculino', 'Femenino']
+
+/** Age in whole years for an ISO birth date, or null. */
+export function ageFrom(iso) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return null
+  const [y, m, d] = iso.split('-').map(Number)
+  const now = new Date()
+  let age = now.getFullYear() - y
+  if (now.getMonth() + 1 < m || (now.getMonth() + 1 === m && now.getDate() < d)) age -= 1
+  return age
+}
+
+/** dd/mm/aaaa · «12/03/2015» */
+const dmyDate = (iso) => (iso ? iso.split('-').reverse().join('/') : '')
+
+/** Birth date from an Excel cell: a real date, «dd/mm/aaaa», «dd-mm-aaaa» or «aaaa-mm-dd». */
+function birthDateFrom(cell) {
+  const value = cell?.value
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
+  const text = cellText(cell).trim()
+  const match = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(text)
+  if (match) return `${match[3]}-${match[2].padStart(2, '0')}-${match[1].padStart(2, '0')}`
+  return text
+}
 
 function normalizeGrade(value) {
   const digit = String(value ?? '').match(/[1-6]/)?.[0]
@@ -72,7 +96,7 @@ async function downloadTemplate() {
   const workbook = new ExcelJS.Workbook()
   const sheet = workbook.addWorksheet('Estudiantes')
   sheet.columns = TEMPLATE_HEADERS.map((header) => ({ header, width: header === 'Apellidos' || header === 'Nombres' || header === 'Apoderado' ? 26 : 14 }))
-  sheet.addRow(['71234567', 'Huamán Rojas', 'Daniel', 'Secundaria', '5', 'A', 'Rosa Rojas', '41234567', '987654321'])
+  sheet.addRow(['71234567', 'Huamán Rojas', 'Daniel', 'Masculino', '14/05/2011', 'Secundaria', '5', 'A', 'Rosa Rojas', '41234567', '987654321'])
   sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }
   sheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } }
   const buffer = await workbook.xlsx.writeBuffer()
@@ -123,9 +147,10 @@ export default function StudentsPage() {
       title: 'Relación de estudiantes',
       subtitle: applied.length ? `Filtros: ${applied.join(' · ')}` : 'Todos los estudiantes activos',
       summary: [['Estudiantes', students.length], ['Primaria', students.filter((item) => item.level === 'Primaria').length], ['Secundaria', students.filter((item) => item.level === 'Secundaria').length]],
-      headers: ['Código', 'DNI', 'Apellidos', 'Nombres', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono', 'QR activo'],
-      widths: [12, 12, 26, 24, 12, 8, 9, 28, 14, 14, 10],
-      rows: students.map((item) => [item.code, item.dni || '—', item.lastNames, item.firstNames, item.level, item.grade, item.section, item.guardian || '—', item.guardianDni || '—', item.phone || '—', item.qrActive ? 'Sí' : 'No']),
+      headers: ['Código', 'DNI', 'Apellidos', 'Nombres', 'Género', 'Fecha de nacimiento', 'Edad', 'Nivel', 'Grado', 'Sección', 'Apoderado', 'DNI apoderado', 'Teléfono', 'QR activo'],
+      widths: [12, 12, 26, 24, 12, 14, 7, 12, 8, 9, 28, 14, 14, 10],
+      rows: students.map((item) => [item.code, item.dni || '—', item.lastNames, item.firstNames, item.gender || '—', dmyDate(item.birthDate) || '—', ageFrom(item.birthDate) ?? '—',
+        item.level, item.grade, item.section, item.guardian || '—', item.guardianDni || '—', item.phone || '—', item.qrActive ? 'Sí' : 'No']),
     }).then(() => toast('Estudiantes exportados a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
   }
 
@@ -325,6 +350,12 @@ function StudentDialog({ student, onClose, onSaved }) {
             <FilterLabel label="Apellidos *"><Input {...field('lastNames')} required /></FilterLabel>
             <FilterLabel label="Nombres *"><Input {...field('firstNames')} required /></FilterLabel>
             <FilterLabel label="DNI"><Input value={form.dni} onChange={(event) => setForm({ ...form, dni: event.target.value.replace(/\D/g, '').slice(0, 8) })} inputMode="numeric" maxLength={8} pattern="\d{8}" title="8 dígitos" /></FilterLabel>
+            <FilterLabel label="Género">
+              <Select value={form.gender || ''} onChange={(gender) => setForm({ ...form, gender })} options={[{ value: '', label: 'Seleccione' }, ...GENDERS.map((value) => ({ value, label: value }))]} />
+            </FilterLabel>
+            <FilterLabel label={`Fecha de nacimiento${ageFrom(form.birthDate) !== null ? ` · ${ageFrom(form.birthDate)} años` : ''}`}>
+              <Input type="date" value={form.birthDate || ''} max={new Date().toISOString().slice(0, 10)} onChange={(event) => setForm({ ...form, birthDate: event.target.value })} />
+            </FilterLabel>
             <FilterLabel label="Nivel *">
               <Select value={form.level} onChange={(level) => setForm({ ...form, level, grade: level === 'Secundaria' && form.grade === '6°' ? '5°' : form.grade })} options={LEVELS.map((value) => ({ value, label: value }))} />
             </FilterLabel>
@@ -369,6 +400,8 @@ function StudentView({ student, onClose }) {
           <StudentPhoto student={student} size="size-24" />
           <dl className="grid flex-1 grid-cols-[110px_1fr] gap-y-1 text-sm">
             <dt className="text-muted-foreground">DNI</dt><dd>{student.dni || '—'}</dd>
+            <dt className="text-muted-foreground">Género</dt><dd>{student.gender || '—'}</dd>
+            <dt className="text-muted-foreground">Nacimiento</dt><dd>{student.birthDate ? `${dmyDate(student.birthDate)} (${ageFrom(student.birthDate)} años)` : '—'}</dd>
             <dt className="text-muted-foreground">Apoderado</dt><dd>{student.guardian || '—'}</dd>
             <dt className="text-muted-foreground">DNI apoderado</dt>
             <dd className="flex flex-wrap items-center gap-2">
@@ -416,7 +449,8 @@ function ImportDialog({ onClose, onDone }) {
       const header = []
       sheet.getRow(1).eachCell((cell, column) => { header[column] = cellText(cell).trim().toLowerCase() })
       const col = (name) => header.findIndex((value) => value && value.normalize('NFD').replace(/[̀-ͯ]/g, '').startsWith(name))
-      const map = { dni: col('dni'), lastNames: col('apellido'), firstNames: col('nombre'), level: col('nivel'), grade: col('grado'), section: col('secc'), guardian: col('apoderado'), guardianDni: col('dni apod'), phone: col('telef') }
+      const map = { dni: col('dni'), lastNames: col('apellido'), firstNames: col('nombre'), gender: col('genero'), birthDate: col('fecha'), level: col('nivel'), grade: col('grado'), section: col('secc'), guardian: col('apoderado'), guardianDni: col('dni apod'), phone: col('telef') }
+      if (map.gender < 0) map.gender = col('sexo')
       // "DNI apoderado" also starts with "dni": make sure the student DNI column is the plain one.
       map.dni = header.findIndex((value) => value === 'dni')
       if (map.lastNames < 0 || map.firstNames < 0 || map.level < 0 || map.grade < 0 || map.section < 0) {
@@ -430,6 +464,9 @@ function ImportDialog({ onClose, onDone }) {
         const get = (key) => (map[key] > 0 ? cellText(row.getCell(map[key])).trim() : '')
         if (!get('lastNames') && !get('firstNames')) return
         parsed.push({
+          row: parsed.length + 1,
+          gender: get('gender'),
+          birthDate: map.birthDate > 0 ? birthDateFrom(row.getCell(map.birthDate)) : '',
           dni: get('dni').replace(/\D/g, ''),
           lastNames: get('lastNames'),
           firstNames: get('firstNames'),

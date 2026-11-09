@@ -76,6 +76,8 @@ function mapStudent(row) {
     qrGeneratedAt: row.qr_generated_at || null,
     guardian: row.guardian || '',
     guardianDni: row.guardian_dni || '',
+    gender: row.gender || '',
+    birthDate: row.birth_date ? String(row.birth_date).slice(0, 10) : '',
     phone: row.phone || '',
     today: row.today_status
       ? { status: row.today_status, time: row.today_time ? String(row.today_time).slice(0, 5) : '', justified: Boolean(row.today_justified) }
@@ -181,6 +183,17 @@ async function nextStudentCode(connection) {
   return `EST-${String(Number(rows[0].n || 0) + 1).padStart(4, '0')}`
 }
 
+export const GENDERS = ['Masculino', 'Femenino']
+
+/** «M», «hombre», «masculino»… → Masculino; «F», «mujer», «femenino»… → Femenino. */
+function normalizeGender(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) return ''
+  if (/^(m|h|masc|hombre|var)/.test(text)) return 'Masculino'
+  if (/^(f|fem|mujer)/.test(text)) return 'Femenino'
+  return null
+}
+
 function validateStudent(body) {
   const data = {
     dni: String(body.dni || '').trim(),
@@ -192,6 +205,15 @@ function validateStudent(body) {
     guardian: String(body.guardian || '').trim(),
     phone: String(body.phone || '').trim(),
     guardianDni: String(body.guardianDni || '').replace(/\D/g, ''),
+    gender: normalizeGender(body.gender),
+    birthDate: String(body.birthDate || '').trim(),
+  }
+  if (data.gender === null) return { error: 'Selecciona un género válido (Masculino o Femenino).' }
+  if (data.birthDate) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(data.birthDate) ? new Date(`${data.birthDate}T12:00:00Z`) : null
+    if (!date || Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== data.birthDate) return { error: 'La fecha de nacimiento no es válida.' }
+    const age = (Date.now() - date.getTime()) / (365.25 * 86400000)
+    if (age < 2 || age > 30) return { error: 'Revisa la fecha de nacimiento: la edad debe estar entre 2 y 30 años.' }
   }
   if (data.guardianDni && !/^\d{8}$/.test(data.guardianDni)) return { error: 'El DNI del apoderado debe tener 8 dígitos.' }
   if (data.dni && !/^\d{8}$/.test(data.dni)) return { error: 'El DNI debe tener 8 dígitos.' }
@@ -263,9 +285,9 @@ export function attendanceRouter() {
     }
     const code = await nextStudentCode(getPool())
     const [created] = await getPool().query(
-      `INSERT INTO students (code, dni, first_names, last_names, level, grade, section, guardian, phone, qr_token, qr_generated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-      [code, data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, newToken()],
+      `INSERT INTO students (code, dni, first_names, last_names, level, grade, section, guardian, phone, gender, birth_date, qr_token, qr_generated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [code, data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, data.gender, data.birthDate || null, newToken()],
     )
     await linkGuardian(getPool(), created.insertId, guardianOf(data))
     res.status(201).json({ ok: true, id: created.insertId, code })
@@ -282,21 +304,22 @@ export function attendanceRouter() {
       await connection.beginTransaction()
       for (const [index, raw] of rows.entries()) {
         const { data, error } = validateStudent(raw)
-        if (error) { errors.push(`Fila ${index + 2}: ${error}`); continue }
+        if (error) { errors.push(`Fila ${Number(raw.row) || index + 1}: ${error}`); continue }
         const [existing] = data.dni ? await connection.query('SELECT id FROM students WHERE dni = ?', [data.dni]) : [[]]
         if (existing[0]) {
           await connection.query(
-            'UPDATE students SET first_names = ?, last_names = ?, level = ?, grade = ?, section = ?, guardian = ?, phone = ?, active = 1 WHERE id = ?',
-            [data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, existing[0].id],
+            `UPDATE students SET first_names = ?, last_names = ?, level = ?, grade = ?, section = ?, guardian = ?, phone = ?,
+               gender = COALESCE(NULLIF(?, ''), gender), birth_date = COALESCE(?, birth_date), active = 1 WHERE id = ?`,
+            [data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, data.gender, data.birthDate || null, existing[0].id],
           )
           if (data.guardianDni) await linkGuardian(connection, existing[0].id, guardianOf(data))
           updated += 1
         } else {
           const code = await nextStudentCode(connection)
           const [inserted] = await connection.query(
-            `INSERT INTO students (code, dni, first_names, last_names, level, grade, section, guardian, phone, qr_token, qr_generated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
-            [code, data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, newToken()],
+            `INSERT INTO students (code, dni, first_names, last_names, level, grade, section, guardian, phone, gender, birth_date, qr_token, qr_generated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+            [code, data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, data.gender, data.birthDate || null, newToken()],
           )
           if (data.guardianDni) await linkGuardian(connection, inserted.insertId, guardianOf(data))
           created += 1
@@ -320,8 +343,8 @@ export function attendanceRouter() {
       if (dup.length) return res.status(409).json({ ok: false, error: 'Ya existe otro estudiante con ese DNI.' })
     }
     await getPool().query(
-      'UPDATE students SET dni = ?, first_names = ?, last_names = ?, level = ?, grade = ?, section = ?, guardian = ?, phone = ? WHERE id = ?',
-      [data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, req.params.id],
+      'UPDATE students SET dni = ?, first_names = ?, last_names = ?, level = ?, grade = ?, section = ?, guardian = ?, phone = ?, gender = ?, birth_date = ? WHERE id = ?',
+      [data.dni || null, data.firstNames, data.lastNames, data.level, data.grade, data.section, data.guardian, data.phone, data.gender, data.birthDate || null, req.params.id],
     )
     await linkGuardian(getPool(), req.params.id, guardianOf(data))
     res.json({ ok: true })
@@ -648,6 +671,10 @@ export async function ensureAttendance() {
     INDEX idx_students_class (level, grade, section),
     INDEX idx_students_name (last_names, first_names)
   ) ENGINE=InnoDB`)
+  for (const [name, type] of [['gender', "VARCHAR(12) NOT NULL DEFAULT ''"], ['birth_date', 'DATE NULL']]) {
+    const [existing] = await db.query('SHOW COLUMNS FROM students LIKE ?', [name])
+    if (!existing.length) await db.query(`ALTER TABLE students ADD COLUMN ${name} ${type}`)
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS attendance (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     student_id INT UNSIGNED NOT NULL,
