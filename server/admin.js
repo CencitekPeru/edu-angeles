@@ -18,7 +18,7 @@ export const CLEAN_CONFIRMATION = 'LIMPIAR'
  */
 export const CLEAN_GROUPS = {
   soporte: { label: 'Incidencias y mantenimiento', tables: ['incident_photos', 'incidents', 'maintenance_photos', 'parts', 'maintenance'], requires: [] },
-  inventario: { label: 'Inventario (bienes tecnológicos y mobiliarios)', tables: ['documents', 'equipment_photos', 'equipment', 'material_inventory'], requires: ['soporte'] },
+  inventario: { label: 'Inventario (todas las secciones de bienes)', tables: ['documents', 'equipment_photos', 'equipment', 'material_inventory', 'asset_items'], requires: ['soporte'] },
   reservas: { label: 'Reservas y horarios fijos', tables: ['requests', 'fixed_schedules'], requires: [] },
   asistencia: { label: 'Registros de asistencia', tables: ['attendance', 'attendance_audit', 'justifications'], requires: [] },
   psicologia: { label: 'Atención psicológica (casos, sesiones y derivaciones)', tables: ['psych_referrals', 'psych_sessions', 'psych_cases'], requires: [] },

@@ -61,7 +61,7 @@ const adminNav = [
     icon: Cpu,
     children: [
       // One entry for the whole inventory; its sections are tabs inside the page.
-      { to: '/admin/inventario', label: 'Inventario', icon: Monitor, also: ['/admin/materiales', '/admin/catalogo'] },
+      { to: '/admin/inventario', label: 'Inventario', icon: Monitor, also: ['/admin/materiales', '/admin/catalogo', '/admin/bienes'] },
       { to: '/admin/incidencias', label: 'Incidencias', icon: AlertTriangle },
       { to: '/admin/mantenimiento', label: 'Mantenimiento', icon: Wrench },
       { to: '/admin/reportes', label: 'Reportes', icon: BarChart3 },

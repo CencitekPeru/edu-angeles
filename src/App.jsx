@@ -15,6 +15,7 @@ import TeacherRegistration from './pages/TeacherRegistration'
 import Dashboard from './pages/campus/Dashboard'
 import { CatalogPage, EquipmentPage } from './pages/campus/Inventory'
 import MaterialsPage from './pages/campus/Materials'
+import AssetsPage from './pages/campus/AssetsPage'
 import ProfilePage from './pages/Profile'
 import SettingsPage from './pages/Settings'
 import PsychologyAttentions from './pages/psychology/Attentions'
@@ -99,6 +100,9 @@ function Gate() {
             <Route path="/admin/inventario/lista" element={<Navigate to="/admin/inventario" replace />} />
             <Route path="/admin/materiales" element={<MaterialsPage />} />
             <Route path="/admin/catalogo" element={<CatalogPage />} />
+            <Route path="/admin/bienes/maquinaria" element={<AssetsPage kind="maquinaria" />} />
+            <Route path="/admin/bienes/transporte" element={<AssetsPage kind="transporte" />} />
+            <Route path="/admin/bienes/culturales" element={<AssetsPage kind="cultural" />} />
             <Route path="/admin/incidencias" element={<IncidentsPage />} />
             <Route path="/admin/mantenimiento" element={<MaintenancePage />} />
             <Route path="/admin/mantenimiento/lista" element={<MaintenancePage mode="list" />} />

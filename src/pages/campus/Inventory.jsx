@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Boxes, CheckCircle2, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileText, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
+import { Boxes, Bus, CheckCircle2, Cog, Landmark, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileText, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -16,12 +16,15 @@ import { usePatrimonialCodes } from './PatrimonialCodePicker'
 import { ImportPatrimonialCodesDialog } from './PatrimonialCodesImport'
 import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
 
-/** Tabs shared by the inventory views (tecnológicos, mobiliarios, ambientes). */
+/** Tabs shared by every inventory section, plus the catalogs. */
 export function InventoryTabs() {
   const { pathname } = useLocation()
   const tabs = [
     { to: '/admin/inventario', label: 'Bienes tecnológicos', icon: Monitor },
     { to: '/admin/materiales', label: 'Bienes mobiliarios', icon: Package },
+    { to: '/admin/bienes/maquinaria', label: 'Maquinaria y equipos', icon: Cog },
+    { to: '/admin/bienes/transporte', label: 'Bienes de transporte', icon: Bus },
+    { to: '/admin/bienes/culturales', label: 'Bienes culturales', icon: Landmark },
     { to: '/admin/catalogo', label: 'Ambientes y categorías', icon: MapPin },
   ]
   return (
@@ -31,7 +34,7 @@ export function InventoryTabs() {
         const active = pathname === tab.to
         return (
           <Link key={tab.to} to={tab.to} aria-current={active ? 'page' : undefined}
-            className={cn('-mb-px flex items-center gap-2 rounded-t-lg border px-4 py-2.5 text-sm font-semibold transition-colors', active ? 'border-border border-b-card bg-card text-primary shadow-[inset_0_-2px_0_var(--primary)]' : 'border-transparent text-muted-foreground hover:text-foreground')}>
+            className={cn('-mb-px flex items-center gap-1.5 whitespace-nowrap rounded-t-lg border px-3 py-2.5 text-sm font-semibold transition-colors', active ? 'border-border border-b-card bg-card text-primary shadow-[inset_0_-2px_0_var(--primary)]' : 'border-transparent text-muted-foreground hover:text-foreground')}>
             <Icon className="size-4" /> {tab.label}
           </Link>
         )

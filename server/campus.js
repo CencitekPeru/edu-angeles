@@ -1217,7 +1217,7 @@ async function migrateInventoryFields(db) {
 const identifierKey = (value) => String(value ?? '').replace(/\s+/g, '').toLowerCase()
 
 /** Id of another row of `table` whose `column` has the same identifier, or null. */
-async function findByIdentifier(db, table, column, value, excludeId = null) {
+export async function findByIdentifier(db, table, column, value, excludeId = null) {
   const key = identifierKey(value)
   if (!key) return null
   const [rows] = await db.query(
