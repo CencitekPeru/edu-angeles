@@ -126,6 +126,9 @@ export function Pill({ value, className }) {
     'En atención': 'warn',
     Atendida: 'ok',
     'Sin respuesta': 'neutral',
+    'No atendida': 'bad',
+    Reprogramada: 'neutral',
+    Concluido: 'ok',
   }
   const labels = {
     registrada: 'Registrada',

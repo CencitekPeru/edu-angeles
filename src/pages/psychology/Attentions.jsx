@@ -1,93 +1,52 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ClipboardPen, FileSpreadsheet, NotebookPen, Pencil, Plus } from 'lucide-react'
+import { ClipboardPen, Eraser, Eye, FileSpreadsheet, NotebookPen, Pencil, Plus } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
-import { exportTableXlsx } from '../../lib/exporters'
 import { Button } from '@/components/ui/button'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Filters, PageHeader, Panel, Pill, Table } from '../campus/kit'
-import { FilterLabel, Select, addDaysISO, todayLima } from '../attendance/shared'
-import { ConfidentialNote, RegisterAttention, SESSION_STATUS, SESSION_TYPES, SessionForm, caseLink, classroom, opts, shortDate } from './shared'
+import { PageHeader, Panel, Pill, StatCard, Table } from '../campus/kit'
+import { FilterLabel, LEVELS, Select, addDaysISO, todayLima } from '../attendance/shared'
+import { AttentionForm, ConfidentialNote, REASONS, RISKS, caseLink, classroom, dmy, opts, studentLink, timeRange } from './shared'
+import { exportAdministrativeReport } from './reportColumns'
 
-const dmy = (iso) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '')
+const KINDS = [['puntual', 'Atención puntual'], ['caso', 'Con seguimiento (caso)']]
 
-/** Columns of the administrative report, in the institution's format: [header, width, value of a row]. */
-const REPORT_COLUMNS = [
-  ['ID estudiante', 12, (r) => r.studentId],
-  ['Código escolar', 14, (r) => r.studentCode],
-  ['Apellidos y nombres', 32, (r) => r.fullName],
-  ['DNI', 12, (r) => r.dni],
-  ['Fecha nacimiento', 14, (r) => dmy(r.birthDate)],
-  ['Edad', 7, (r) => r.age],
-  ['Nivel', 12, (r) => r.level],
-  ['Grado', 8, (r) => r.grade],
-  ['Sección', 9, (r) => r.section],
-  ['Turno', 10, (r) => r.shift],
-  ['Nombre del apoderado', 28, (r) => r.guardian],
-  ['Parentesco', 13, (r) => r.relationship],
-  ['Teléfono', 13, (r) => r.phone],
-  ['Teléfono alternativo', 15, (r) => r.phoneAlt],
-  ['Correo apoderado', 28, (r) => r.guardianEmail],
-  ['Fecha de atención', 14, (r) => dmy(r.date)],
-  ['Hora atención', 10, (r) => r.time],
-  ['ID atención', 12, (r) => r.attentionCode],
-  ['Tipo de atención', 18, (r) => r.type],
-  ['Categoría general', 20, (r) => r.category],
-  ['Motivo administrativo breve', 32, (r) => r.adminReason],
-  ['Estado de atención', 15, (r) => r.attentionStatus],
-  ['Psicólogo(a) responsable', 26, (r) => r.psychologist],
-  ['Asistió a cita', 10, (r) => r.attended],
-  ['N.º citas programadas', 12, (r) => r.scheduled],
-  ['N.º citas asistidas', 12, (r) => r.attendedCount],
-  ['N.º citas inasistidas', 12, (r) => r.missedCount],
-  ['Próxima cita', 16, (r) => (r.nextAppointment ? `${dmy(r.nextAppointment)} ${r.nextAppointment.slice(11)}` : '')],
-  ['Estado seguimiento', 15, (r) => r.followUp],
-  ['Derivación', 10, (r) => r.referred],
-  ['Destino derivación', 30, (r) => r.referralDestination],
-  ['Estado derivación', 14, (r) => r.referralStatus],
-  ['Contacto con apoderado', 12, (r) => r.guardianContact],
-  ['Fecha contacto', 13, (r) => dmy(r.contactDate)],
-  ['Observación administrativa', 40, (r) => r.adminNotes],
-  ['Asistencias escolares (mes)', 12, (r) => r.schoolPresent],
-  ['Tardanzas escolares (mes)', 12, (r) => r.schoolLate],
-  ['Inasistencias escolares (mes)', 12, (r) => r.schoolAbsent],
-  ['Mes reporte', 9, (r) => r.reportMonth],
-  ['Año reporte', 9, (r) => r.reportYear],
-]
-
-/** Every attention (session) recorded by Psychology, newest first. */
+/** Registro de atenciones (manual §3): every intervention actually carried out, punctual or within a case. */
 export default function AttentionsPage() {
   const { toast } = useApp()
   const canEdit = useCan('psicologia')
   const today = todayLima()
   const [range, setRange] = useState({ from: addDaysISO(today, -30), to: today })
-  const [filters, setFilters] = useState({ q: '', type: '', status: '' })
-  const [sessions, setSessions] = useState([])
+  const emptyFilters = { q: '', kind: '', reason: '', risk: '', level: '' }
+  const [filters, setFilters] = useState(emptyFilters)
+  const [attentions, setAttentions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [registering, setRegistering] = useState(false)
-  const [editing, setEditing] = useState(null)
+  const [form, setForm] = useState(undefined)
+  const [viewing, setViewing] = useState(null)
   const [exporting, setExporting] = useState(false)
 
   async function load() {
     setLoading(true)
-    const result = await api(`/api/psychology/sessions?${new URLSearchParams(range)}`)
+    const result = await api(`/api/psychology/attentions?${new URLSearchParams(range)}`)
     setLoading(false)
-    if (result.ok) setSessions([...result.sessions].reverse())
+    if (result.ok) setAttentions(result.attentions)
     else toast(result.error || 'No se pudieron cargar las atenciones.', 'bad')
   }
   useEffect(() => { load() }, [range.from, range.to])
 
   const visible = useMemo(() => {
     const term = filters.q.trim().toLowerCase()
-    return sessions.filter((item) =>
-      (!filters.type || item.type === filters.type)
-      && (!filters.status || item.status === filters.status)
-      && (!term || `${item.student.name} ${item.caseCode} ${classroom(item.student)} ${item.reason}`.toLowerCase().includes(term)))
-  }, [sessions, filters])
+    return attentions.filter((item) =>
+      (!filters.kind || (filters.kind === 'caso') === Boolean(item.caseId))
+      && (!filters.reason || item.reason === filters.reason)
+      && (!filters.risk || item.riskLevel === filters.risk)
+      && (!filters.level || item.student.level === filters.level)
+      && (!term || `${item.student.name} ${item.student.code} ${item.student.dni} ${item.caseCode} ${classroom(item.student)}`.toLowerCase().includes(term)))
+  }, [attentions, filters])
 
-  /** Administrative report of the attentions shown (same period and filters), one row per attention. */
   async function exportData() {
     if (!visible.length) return toast('No hay atenciones para exportar.', 'bad')
     setExporting(true)
@@ -95,65 +54,99 @@ export default function AttentionsPage() {
     setExporting(false)
     if (!result.ok) return toast(result.error || 'No se pudo preparar el reporte.', 'bad')
     const shown = new Set(visible.map((item) => item.id))
-    const rows = result.rows.filter((row) => shown.has(row.attentionId))
-    exportTableXlsx({
-      title: 'Atención psicológica · Reporte de atenciones',
-      subtitle: `Del ${shortDate(range.from)} al ${shortDate(range.to)} · Uso administrativo, sin información clínica`,
-      summary: [['Atenciones', rows.length], ['Estudiantes', new Set(rows.map((row) => row.studentId)).size]],
-      headers: REPORT_COLUMNS.map(([header]) => header),
-      widths: REPORT_COLUMNS.map(([, width]) => width),
-      rows: rows.map((row) => REPORT_COLUMNS.map(([, , value]) => value(row) ?? '')),
-    }).then(() => toast('Reporte de atenciones exportado a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
+    exportAdministrativeReport(result.rows.filter((row) => shown.has(row.attentionId)), `Del ${dmy(range.from)} al ${dmy(range.to)}`)
+      .then(() => toast('Reporte de atenciones exportado a Excel.')).catch(() => toast('No se pudo exportar el archivo.', 'bad'))
   }
 
+  const punctual = attentions.filter((item) => !item.caseId).length
   return (
     <div className="space-y-4">
       <PageHeader
         icon={NotebookPen}
         title="Registro de atenciones"
-        description="Cada atención psicológica realizada a los estudiantes, con su caso, tipo y acuerdos."
+        description="Cada intervención psicológica realizada, puntual o con necesidad de seguimiento."
         actions={(
           <>
             <Button type="button" variant="outline" disabled={exporting} onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> {exporting ? 'Preparando…' : 'Exportar Excel'}</Button>
-            {canEdit && <Button type="button" onClick={() => setRegistering(true)}><Plus /> Registrar atención</Button>}
+            {canEdit && <Button type="button" onClick={() => setForm(null)}><Plus /> Registrar atención</Button>}
           </>
         )}
       />
       <ConfidentialNote />
 
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard icon={ClipboardPen} value={attentions.length} label="Atenciones en el periodo" />
+        <StatCard tone="green" icon={NotebookPen} value={punctual} label="Atenciones puntuales" onClick={() => setFilters({ ...filters, kind: 'puntual' })} />
+        <StatCard tone="amber" icon={NotebookPen} value={attentions.length - punctual} label="Con seguimiento (caso)" onClick={() => setFilters({ ...filters, kind: 'caso' })} />
+        <StatCard tone="blue" icon={NotebookPen} value={new Set(attentions.map((item) => item.student.id)).size} label="Estudiantes atendidos" />
+      </div>
+
       <Panel title="Atenciones registradas" icon={ClipboardPen}>
-        <Filters className="lg:grid-cols-5">
+        <div className="mb-4 grid gap-2.5 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          <FilterLabel label="Buscar" className="sm:col-span-2"><Input placeholder="Estudiante, código, DNI o caso" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} /></FilterLabel>
           <FilterLabel label="Desde"><Input type="date" value={range.from} max={range.to} onChange={(event) => setRange({ ...range, from: event.target.value })} /></FilterLabel>
           <FilterLabel label="Hasta"><Input type="date" value={range.to} min={range.from} onChange={(event) => setRange({ ...range, to: event.target.value })} /></FilterLabel>
-          <FilterLabel label="Tipo"><Select value={filters.type} onChange={(type) => setFilters({ ...filters, type })} options={opts(SESSION_TYPES, 'Todos los tipos')} /></FilterLabel>
-          <FilterLabel label="Estado"><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={opts(SESSION_STATUS, 'Todos los estados')} /></FilterLabel>
-          <FilterLabel label="Buscar"><Input placeholder="Estudiante, caso o grado" value={filters.q} onChange={(event) => setFilters({ ...filters, q: event.target.value })} /></FilterLabel>
-        </Filters>
+          <FilterLabel label="Tipo"><Select value={filters.kind} onChange={(kind) => setFilters({ ...filters, kind })} options={[{ value: '', label: 'Todos' }, ...KINDS.map(([value, label]) => ({ value, label }))]} /></FilterLabel>
+          <FilterLabel label="Motivo"><Select value={filters.reason} onChange={(reason) => setFilters({ ...filters, reason })} options={opts(REASONS, 'Todos')} /></FilterLabel>
+          <FilterLabel label="Riesgo"><Select value={filters.risk} onChange={(risk) => setFilters({ ...filters, risk })} options={opts(RISKS, 'Todos')} /></FilterLabel>
+          <FilterLabel label="Nivel"><Select value={filters.level} onChange={(level) => setFilters({ ...filters, level })} options={opts(LEVELS, 'Todos')} /></FilterLabel>
+          <div className="flex items-end"><Button type="button" variant="outline" className="w-full" onClick={() => setFilters(emptyFilters)}><Eraser /> Limpiar filtros</Button></div>
+        </div>
         <Table
           rows={visible}
-          empty={loading ? 'Cargando…' : 'No hay atenciones en este periodo.'}
+          empty={loading ? 'Cargando…' : 'No hay atenciones registradas en este periodo.'}
           columns={[
-            { key: 'date', label: 'Fecha', render: (item) => <span className="whitespace-nowrap">{shortDate(item.date)}<span className="block text-xs text-muted-foreground">{item.time}</span></span> },
-            { key: 'student', label: 'Estudiante', render: (item) => <span><span className="block font-medium">{item.student.name}</span><span className="text-xs text-muted-foreground">{classroom(item.student)}</span></span> },
-            { key: 'case', label: 'Caso', render: (item) => <span><Link to={caseLink(item.caseId)} className="font-semibold text-primary hover:underline">{item.caseCode}</Link><span className="block text-xs text-muted-foreground">{item.reason}</span></span> },
-            { key: 'type', label: 'Tipo' },
-            { key: 'status', label: 'Estado', render: (item) => <Pill value={item.status} /> },
-            { key: 'agreements', label: 'Acuerdos', render: (item) => <span className="line-clamp-2 max-w-72 text-xs">{item.agreements || '—'}</span> },
-            { key: 'actions', label: 'Acciones', hidden: !canEdit, render: (item) => <Button type="button" variant="ghost" size="icon" className="size-8" title="Editar atención" aria-label="Editar atención" onClick={() => setEditing(item)}><Pencil /></Button> },
+            { key: 'date', label: 'Fecha y hora', render: (item) => <span className="whitespace-nowrap">{dmy(item.date)}<span className="block text-xs text-muted-foreground">{timeRange(item)}</span></span> },
+            { key: 'student', label: 'Estudiante', render: (item) => <Link to={studentLink(item.student.id)} className="hover:text-primary"><span className="block font-medium">{item.student.name}</span><span className="text-xs text-muted-foreground">{item.student.code} · {classroom(item.student)}</span></Link> },
+            { key: 'kind', label: 'Tipo', render: (item) => (item.caseId ? <Link to={caseLink(item.caseId)} className="font-semibold text-primary hover:underline">Caso {item.caseCode}</Link> : <span className="text-muted-foreground">Puntual</span>) },
+            { key: 'reason', label: 'Motivo' },
+            { key: 'risk', label: 'Riesgo', render: (item) => (item.riskLevel ? <Pill value={item.riskLevel} /> : '—') },
+            { key: 'by', label: 'Registrado por', render: (item) => <span className="text-xs">{item.createdBy || '—'}</span> },
+            { key: 'actions', label: 'Acciones', render: (item) => (
+              <span className="flex gap-1">
+                <Button type="button" variant="ghost" size="icon" className="size-8 text-primary" title="Ver atención" aria-label="Ver atención" onClick={() => setViewing(item)}><Eye /></Button>
+                {canEdit && <Button type="button" variant="ghost" size="icon" className="size-8" title="Editar atención" aria-label="Editar atención" onClick={() => setForm(item)}><Pencil /></Button>}
+              </span>
+            ) },
           ]}
         />
       </Panel>
 
-      {registering && <RegisterAttention onClose={() => setRegistering(false)} onSaved={() => { setRegistering(false); load() }} />}
-      {editing && (
-        <SessionForm
-          caseId={editing.caseId}
-          caseLabel={`Caso ${editing.caseCode} · ${editing.student.name}`}
-          session={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load() }}
-        />
-      )}
+      {form !== undefined && <AttentionForm attention={form} onClose={() => setForm(undefined)} onSaved={() => { setForm(undefined); load() }} />}
+      {viewing && <AttentionView item={viewing} onClose={() => setViewing(null)} onEdit={canEdit ? () => { setForm(viewing); setViewing(null) } : null} />}
     </div>
+  )
+}
+
+function Row({ label, children }) {
+  return <><dt className="text-muted-foreground">{label}</dt><dd className="whitespace-pre-wrap">{children || '—'}</dd></>
+}
+
+export function AttentionView({ item, onClose, onEdit }) {
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Atención del {dmy(item.date)}</DialogTitle>
+          <DialogDescription>{item.student.name} · {item.student.code} · {classroom(item.student)}</DialogDescription>
+        </DialogHeader>
+        <dl className="grid grid-cols-[170px_1fr] gap-x-3 gap-y-1.5 text-sm">
+          <Row label="Horario">{timeRange(item)}</Row>
+          <Row label="Tipo">{item.caseId ? `Con seguimiento · Caso ${item.caseCode}` : 'Atención puntual'}</Row>
+          <Row label="Motivo">{item.reason}</Row>
+          <Row label="Derivado por">{[item.referredBy, item.referrerName].filter(Boolean).join(' · ')}</Row>
+          <Row label="Nivel de riesgo">{item.riskLevel}</Row>
+          <Row label="Descripción">{item.notes}</Row>
+          <Row label="Acuerdos / Orientaciones">{item.agreements}</Row>
+          <Row label="Motivo administrativo">{item.adminReason}</Row>
+          <Row label="Observación administrativa">{item.adminNotes}</Row>
+          <Row label="Registrado por">{item.createdBy}</Row>
+        </dl>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose}>Cerrar</Button>
+          {onEdit && <Button type="button" onClick={onEdit}><Pencil /> Editar</Button>}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
