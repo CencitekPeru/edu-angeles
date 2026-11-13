@@ -227,7 +227,7 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
-      <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="max-h-[94vh] w-[96vw] overflow-y-auto sm:max-w-6xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
             <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><CalendarPlus className="size-6" /></span>
@@ -238,7 +238,8 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
           </div>
         </DialogHeader>
 
-        <form id="activity-form" className="space-y-3" onSubmit={save}>
+        <form id="activity-form" className="grid items-start gap-3 lg:grid-cols-2" onSubmit={save}>
+          <div className="space-y-3">
           <FormSection icon={ClipboardList} title="Información de la actividad" className="sm:grid-cols-6">
             <Field label="Nombre de la actividad" required className="sm:col-span-6">
               <WithIcon icon={FileText}><Input className="pl-8" value={form.title} onChange={(event) => set({ title: event.target.value })} maxLength={200} placeholder="Ej. Día de la Madre" required /></WithIcon>
@@ -269,6 +270,14 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
               </div>
             </fieldset>
           </FormSection>
+          <FormSection icon={ClipboardList} title="Descripción de la actividad">
+            <div className="relative">
+              <Textarea rows={3} className="pb-6" value={form.description} onChange={(event) => set({ description: event.target.value.slice(0, DESCRIPTION_MAX) })} maxLength={DESCRIPTION_MAX}
+                placeholder="Describe brevemente la actividad y quiénes participan." aria-label="Descripción de la actividad" />
+              <span className="pointer-events-none absolute bottom-1.5 right-3 text-xs tabular-nums text-muted-foreground">{form.description.length}/{DESCRIPTION_MAX}</span>
+            </div>
+          </FormSection>
+          </div>
 
           <FormSection icon={Users} title="Responsables de la actividad" className={cn(levels.length > 1 && 'sm:grid-cols-2')}>
             {levels.map((level) => (
@@ -277,13 +286,6 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
             {!teachers.length && <p className="text-xs text-muted-foreground sm:col-span-2">No hay docentes activos registrados. Agrégalos en la sección Docentes.</p>}
           </FormSection>
 
-          <FormSection icon={ClipboardList} title="Descripción de la actividad">
-            <div className="relative">
-              <Textarea rows={3} className="pb-6" value={form.description} onChange={(event) => set({ description: event.target.value.slice(0, DESCRIPTION_MAX) })} maxLength={DESCRIPTION_MAX}
-                placeholder="Describe brevemente la actividad y quiénes participan." aria-label="Descripción de la actividad" />
-              <span className="pointer-events-none absolute bottom-1.5 right-3 text-xs tabular-nums text-muted-foreground">{form.description.length}/{DESCRIPTION_MAX}</span>
-            </div>
-          </FormSection>
         </form>
 
         <DialogFooter className="gap-2 sm:items-center sm:justify-between">
