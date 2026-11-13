@@ -6,9 +6,7 @@ import {
   CalendarClock,
   CalendarDays,
   CalendarRange,
-  Boxes,
   Flag,
-  TrendingUp,
   ChevronDown,
   ChevronRight,
   Eye,
@@ -56,6 +54,8 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { NotificationBell } from './Notifications'
 import { ROLE_LABEL, canView, homePath as homeFor, isStaff, useLevel } from '../lib/permissions'
+import { exportDenied, moduleForPath } from '../lib/accessModel'
+import { setExportGuard } from '../lib/exporters'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 
@@ -108,12 +108,8 @@ const adminNav = [
     label: 'Gestión de Actividades',
     icon: Flag,
     children: [
-      { to: '/admin/actividades', label: 'Panel de actividades', icon: LayoutGrid, end: true },
       { to: '/admin/actividades/calendario', label: 'Calendario institucional', icon: CalendarDays },
       { to: '/admin/actividades/programadas', label: 'Actividades programadas', icon: CalendarRange },
-      { to: '/admin/actividades/comisiones', label: 'Comisiones y responsables', icon: Users },
-      { to: '/admin/actividades/seguimiento', label: 'Seguimiento', icon: TrendingUp },
-      { to: '/admin/actividades/recursos', label: 'Recursos e informes', icon: Boxes },
     ],
   },
   {
@@ -208,13 +204,25 @@ function groupsThatFit(items, height, pathname) {
 const tooltipClass = 'bg-slate-900 text-white border border-slate-700 text-xs px-2.5 py-1 font-medium shadow-xl'
 
 export default function Layout() {
-  const { user, logout, offline } = useApp()
+  const { user, logout, offline, toast } = useApp()
   const location = useLocation()
+  // Exports (Excel / PDF) follow the «Exportar» permission of the current page's module.
+  useEffect(() => {
+    const module = moduleForPath(location.pathname)
+    setExportGuard(() => {
+      const denied = isStaff(user) ? exportDenied(user, module) : null
+      if (denied) toast(denied, 'bad')
+      return denied
+    })
+  }, [user, location.pathname])
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('nodo-sidebar') === 'collapsed')
   const staff = isStaff(user)
   const pageLevel = useLevel()
-  const items = staff ? navFor(user) : teacherNav
+  // A teacher with permissions keeps their reservations panel and also sees the modules they were given.
+  const items = user?.role === 'teacher'
+    ? (staff ? [...teacherNav, { label: 'Panel administrativo', icon: LayoutGrid, divider: true, children: navFor(user) }] : teacherNav)
+    : navFor(user)
   const profilePath = staff ? '/admin/perfil' : '/panel/perfil'
   const homePath = homeFor(user)
 
@@ -595,7 +603,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent side="top" align="start" className="w-56">
               <DropdownMenuItem asChild className="cursor-pointer gap-2">
-                <Link to={isStaff(user) ? '/admin/perfil' : '/panel/perfil'}>
+                <Link to={user.role === 'teacher' ? '/panel/perfil' : '/admin/perfil'}>
                   <UserRound className="size-4" />
                   <span>Mi perfil</span>
                 </Link>

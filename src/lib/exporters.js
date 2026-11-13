@@ -6,11 +6,20 @@ function slug(text) {
 
 const stamp = () => new Date().toISOString().slice(0, 10)
 
+// Set by the layout: returns why the current user may not export on the current page, or null.
+let exportGuard = () => null
+export function setExportGuard(fn) { exportGuard = typeof fn === 'function' ? fn : () => null }
+function checkExport() {
+  const denied = exportGuard()
+  if (denied) throw new Error(denied)
+}
+
 /**
  * Exports a simple table to a landscape A4 PDF with the school header.
  * Wide tables can pass a smaller `fontSize` and per-column `columnStyles` (jspdf-autotable format).
  */
 export async function exportTablePdf({ title, subtitle = '', headers, rows, summary = [], fontSize = 8, columnStyles = {} }) {
+  checkExport()
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' })
   const width = doc.internal.pageSize.getWidth()
@@ -57,6 +66,7 @@ export async function exportTablePdf({ title, subtitle = '', headers, rows, summ
 
 /** Exports a simple table to a styled .xlsx file. */
 export async function exportTableXlsx({ title, subtitle = '', headers, rows, widths, summary = [] }) {
+  checkExport()
   const { default: ExcelJS } = await import('exceljs')
   const workbook = new ExcelJS.Workbook()
   workbook.creator = `${SCHOOL.name} · CIST`

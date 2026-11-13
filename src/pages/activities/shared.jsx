@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CalendarDays, CheckCircle2, ClipboardList, FileText, Flag, ListChecks, MapPin, Package, Pencil, Plus, Trash2, Users, X } from 'lucide-react'
+import { BookOpen, CalendarDays, CalendarPlus, CheckCircle2, ClipboardList, FileText, Flag, GraduationCap, Info as InfoIcon, Layers, ListChecks, Package, Pencil, Plus, Save, Trash2, User, Users, X } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
@@ -13,7 +13,7 @@ import { Select, todayLima } from '../attendance/shared'
 
 /* ------------------------------------------------------------- catalogs */
 
-export const ACTIVITY_TYPES = ['Cívica', 'Académica', 'Cultural', 'Deportiva', 'Religiosa', 'Reunión institucional', 'Escuela de padres', 'Salida / visita de estudio', 'Capacitación', 'Otra']
+export const ACTIVITY_TYPES = ['Cívica', 'Académica', 'Cultural', 'Deportiva', 'Ambiental', 'Gestión del riesgo', 'Religiosa', 'Reunión institucional', 'Escuela de padres', 'Salida / visita de estudio', 'Capacitación', 'Otra']
 export const ACTIVITY_LEVELS = ['Institucional', 'Primaria', 'Secundaria']
 export const ACTIVITY_STATUS = ['Planificada', 'En preparación', 'En ejecución', 'Realizada', 'Postergada', 'Cancelada']
 export const TASK_STATUS = ['Pendiente', 'En proceso', 'Completada']
@@ -22,12 +22,8 @@ export const RESOURCE_STATUS = ['Solicitado', 'Aprobado', 'Entregado', 'No dispo
 export const ACTIVE_STATUS = ['Planificada', 'En preparación', 'En ejecución']
 
 export const ACT = {
-  panel: '/admin/actividades',
   calendar: '/admin/actividades/calendario',
   list: '/admin/actividades/programadas',
-  commissions: '/admin/actividades/comisiones',
-  followUp: '/admin/actividades/seguimiento',
-  resources: '/admin/actividades/recursos',
 }
 export const activityLink = (id) => `${ACT.list}?actividad=${id}`
 
@@ -88,12 +84,6 @@ export function useCommissions() {
   return [commissions, reload]
 }
 
-function usePlaces() {
-  const [places, setPlaces] = useState([])
-  useEffect(() => { api('/api/places').then((result) => { if (result.ok) setPlaces(result.places) }) }, [])
-  return places
-}
-
 function useSave(onSaved) {
   const { toast } = useApp()
   const [saving, setSaving] = useState(false)
@@ -130,62 +120,181 @@ function FormDialog({ title, description, icon: Icon, formId, saving, onClose, s
 
 const emptyActivity = (date) => ({
   title: '', type: '', level: 'Institucional', audience: '', startDate: date || todayLima(), endDate: '', startTime: '', endTime: '', place: '',
-  commissionId: '', responsible: '', objective: '', description: '', budget: '', status: 'Planificada',
+  commissionId: '', responsible: '', objective: '', description: '', budget: '', status: 'Planificada', staff: {},
 })
 
-/** Registers or edits an activity: general data, date and place, who is in charge, and planning. */
+const LEVEL_SCOPE = [
+  { value: 'Institucional', label: 'Toda la institución' },
+  { value: 'Primaria', label: 'Primaria' },
+  { value: 'Secundaria', label: 'Secundaria' },
+]
+const STAFF_LEVELS = {
+  Secundaria: { title: 'Nivel Secundaria', icon: GraduationCap, tone: 'border-primary/20 bg-primary/[0.07] text-primary' },
+  Primaria: { title: 'Nivel Primaria', icon: BookOpen, tone: 'border-[#3f7d5c]/20 bg-[#3f7d5c]/[0.08] text-[#2f6247] dark:text-[#8fc4a6]' },
+}
+/** Levels whose staff an activity needs: both for the whole school, otherwise just its own. */
+export const staffLevels = (level) => (level === 'Primaria' ? ['Primaria'] : level === 'Secundaria' ? ['Secundaria'] : ['Secundaria', 'Primaria'])
+const DESCRIPTION_MAX = 500
+
+/** Input/select with a leading icon. */
+function WithIcon({ icon: Icon, children }) {
+  return (
+    <span className="relative block">
+      <Icon className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      {children}
+    </span>
+  )
+}
+
+function FormSection({ icon: Icon, title, className, children }) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-border">
+      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-sm font-bold text-primary dark:bg-muted/40">{Icon && <Icon className="size-4" />} {title}</h3>
+      <div className={cn('grid gap-3 p-3', className)}>{children}</div>
+    </section>
+  )
+}
+
+/** Lead teacher plus supporting teachers for one level. */
+function LevelStaff({ level, value, teachers, onChange }) {
+  const { title, icon: Icon, tone } = STAFF_LEVELS[level]
+  const [adding, setAdding] = useState(false)
+  const lead = value?.lead || ''
+  const support = value?.support || []
+  // Keep a saved name selectable even if that teacher is no longer active.
+  const leadOptions = [...new Set([...teachers, lead].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'))
+  const supportOptions = teachers.filter((name) => name !== lead && !support.includes(name))
+  const update = (patch) => onChange({ lead, support, ...patch })
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <h4 className={cn('flex items-center gap-2 border-b px-3 py-2 text-sm font-bold', tone)}><Icon className="size-4" /> {title}</h4>
+      <div className="grid gap-3 p-3">
+        <Field label="Responsable principal" required>
+          <WithIcon icon={User}>
+            <Select className="pl-8" value={lead} required onChange={(name) => update({ lead: name, support: support.filter((item) => item !== name) })}
+              options={[{ value: '', label: 'Seleccione un docente' }, ...leadOptions.map((name) => ({ value: name, label: name }))]} />
+          </WithIcon>
+        </Field>
+        <div className="grid gap-1.5">
+          <span className="text-xs font-semibold">Docentes de apoyo</span>
+          {support.map((name) => (
+            <span key={name} className="flex h-9 items-center gap-2 rounded-md border border-input bg-card px-2.5 text-sm shadow-xs">
+              <User className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate">{name}</span>
+              <button type="button" className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={`Quitar a ${name}`} onClick={() => update({ support: support.filter((item) => item !== name) })}><X className="size-3.5" /></button>
+            </span>
+          ))}
+          {adding ? (
+            <span className="flex items-center gap-1.5">
+              <Select autoFocus value="" aria-label="Docente de apoyo" onChange={(name) => { if (name) update({ support: [...support, name] }); setAdding(false) }}
+                options={[{ value: '', label: supportOptions.length ? 'Seleccione un docente' : 'No hay más docentes' }, ...supportOptions.map((name) => ({ value: name, label: name }))]} />
+              <Button type="button" variant="ghost" size="icon" className="size-8 shrink-0" aria-label="Cancelar" onClick={() => setAdding(false)}><X /></Button>
+            </span>
+          ) : (
+            <Button type="button" variant="outline" size="sm" className="w-fit text-primary" onClick={() => setAdding(true)}><Plus /> Agregar apoyo</Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Registers or edits an activity: name, schedule, management committee, scope and the teachers in charge of each level. */
 export function ActivityForm({ activity, date, onClose, onSaved }) {
   const editing = Boolean(activity?.id)
+  const { users } = useApp()
   const [commissions] = useCommissions()
-  const places = usePlaces()
   const [form, setForm] = useState(() => (editing
-    ? { ...activity, commissionId: activity.commissionId ? String(activity.commissionId) : '', budget: activity.budget ?? '', endDate: activity.endDate === activity.startDate ? '' : activity.endDate }
+    ? { ...activity, commissionId: activity.commissionId ? String(activity.commissionId) : '', budget: activity.budget ?? '', endDate: activity.endDate === activity.startDate ? '' : activity.endDate, staff: activity.staff || {} }
     : emptyActivity(date)))
   const [saving, run, toast] = useSave(onSaved)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
-  const knownPlace = !form.place || places.some((item) => item.name === form.place)
+  const levels = staffLevels(form.level)
+  const teachers = (users || []).filter((user) => user.role === 'teacher' && user.active).map((user) => user.name).sort((a, b) => a.localeCompare(b, 'es'))
 
   function save(event) {
     event.preventDefault()
-    if (!form.commissionId && !form.responsible.trim()) return toast('Indica la comisión o la persona responsable.', 'bad')
+    if (!form.commissionId) return toast('Selecciona el comité de gestión.', 'bad')
+    const missing = levels.find((level) => !form.staff[level]?.lead)
+    if (missing) return toast(`Selecciona el responsable principal del nivel ${missing}.`, 'bad')
+    if (form.startTime && form.endTime && !form.endDate && form.endTime <= form.startTime) return toast('La hora de fin debe ser posterior a la de inicio.', 'bad')
+    const body = { ...form, staff: Object.fromEntries(levels.map((level) => [level, form.staff[level]])) }
     return run(
-      () => (editing ? api(`/api/activities/${activity.id}`, { method: 'PATCH', body: form }) : api('/api/activities', { method: 'POST', body: form })),
+      () => (editing ? api(`/api/activities/${activity.id}`, { method: 'PATCH', body }) : api('/api/activities', { method: 'POST', body })),
       (result) => (editing ? 'Actividad actualizada.' : `Actividad ${result.code} registrada.`),
     )
   }
 
   return (
-    <FormDialog title={editing ? `Editar actividad ${activity.code}` : 'Registrar actividad'} description="Programa una actividad institucional y define quién está a cargo." icon={CalendarDays} formId="activity-form" saving={saving} onClose={onClose} submitLabel={editing ? 'Guardar cambios' : 'Registrar actividad'}>
-      <form id="activity-form" className="space-y-3" onSubmit={save}>
-        <Section icon={Flag} title="1. Datos generales" className="sm:grid-cols-4">
-          <Field label="Nombre de la actividad" required className="sm:col-span-4"><Input value={form.title} onChange={(event) => set({ title: event.target.value })} maxLength={200} placeholder="Ej. Ceremonia por el Día de la Bandera" required /></Field>
-          <Field label="Tipo" required><Select value={form.type} onChange={(type) => set({ type })} options={opts(ACTIVITY_TYPES, 'Seleccione')} required /></Field>
-          <Field label="Nivel"><Select value={form.level} onChange={(level) => set({ level })} options={opts(ACTIVITY_LEVELS)} /></Field>
-          <Field label="Dirigido a" className="sm:col-span-2"><Input value={form.audience} onChange={(event) => set({ audience: event.target.value })} maxLength={160} placeholder="Ej. Estudiantes de 1.° a 5.° de secundaria y padres" /></Field>
-        </Section>
-        <Section icon={MapPin} title="2. Fecha y lugar" className="sm:grid-cols-4">
-          <Field label="Fecha de inicio" required><Input type="date" value={form.startDate} onChange={(event) => set({ startDate: event.target.value })} required /></Field>
-          <Field label="Fecha de fin" hint="si dura varios días"><Input type="date" value={form.endDate} min={form.startDate} onChange={(event) => set({ endDate: event.target.value })} /></Field>
-          <Field label="Hora de inicio"><Input type="time" value={form.startTime} onChange={(event) => set({ startTime: event.target.value })} /></Field>
-          <Field label="Hora de fin"><Input type="time" value={form.endTime} onChange={(event) => set({ endTime: event.target.value })} /></Field>
-          <Field label="Lugar" className="sm:col-span-2">
-            <Select value={knownPlace ? form.place : '__other'} onChange={(place) => set({ place: place === '__other' ? ' ' : place })} options={[{ value: '', label: 'Seleccione' }, ...places.map((item) => ({ value: item.name, label: item.name })), { value: '__other', label: 'Otro lugar…' }]} />
-          </Field>
-          {!knownPlace && <Field label="Otro lugar" className="sm:col-span-2"><Input value={form.place.trimStart()} onChange={(event) => set({ place: event.target.value })} maxLength={160} placeholder="Ej. Estadio municipal" /></Field>}
-        </Section>
-        <Section icon={Users} title="3. Responsables" className="sm:grid-cols-2">
-          <Field label="Comisión a cargo"><Select value={form.commissionId} onChange={(commissionId) => set({ commissionId })} options={[{ value: '', label: 'Sin comisión' }, ...commissions.filter((item) => item.active || String(item.id) === form.commissionId).map((item) => ({ value: String(item.id), label: item.name }))]} /></Field>
-          <Field label="Responsable directo"><Input value={form.responsible} onChange={(event) => set({ responsible: event.target.value })} maxLength={160} placeholder="Ej. Prof. Ana Torres" /></Field>
-          <p className="text-xs text-muted-foreground sm:col-span-2">Indica al menos la comisión o la persona responsable. Las comisiones se administran en «Comisiones y responsables».</p>
-        </Section>
-        <Section icon={ClipboardList} title="4. Planificación" className="sm:grid-cols-4">
-          <Field label="Objetivo" className="sm:col-span-2"><Textarea rows={3} value={form.objective} onChange={(event) => set({ objective: event.target.value })} maxLength={2000} placeholder="¿Qué se busca lograr con la actividad?" /></Field>
-          <Field label="Descripción / programa" className="sm:col-span-2"><Textarea rows={3} value={form.description} onChange={(event) => set({ description: event.target.value })} maxLength={4000} placeholder="Momentos, programa o detalles de organización" /></Field>
-          <Field label="Presupuesto estimado (S/)"><Input inputMode="decimal" value={form.budget} onChange={(event) => set({ budget: event.target.value })} placeholder="0.00" /></Field>
-          <Field label="Estado"><Select value={form.status} onChange={(status) => set({ status })} options={opts(ACTIVITY_STATUS)} /></Field>
-        </Section>
-      </form>
-    </FormDialog>
+    <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
+      <DialogContent className="max-h-[94vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <div className="flex items-center gap-3">
+            <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><CalendarPlus className="size-6" /></span>
+            <div className="grid gap-0.5 text-left">
+              <DialogTitle className="text-xl">{editing ? `Editar actividad ${activity.code}` : 'Nueva Actividad'}</DialogTitle>
+              <DialogDescription>{editing ? 'Actualiza una actividad del Calendario Institucional.' : 'Registra una actividad en el Calendario Institucional.'}</DialogDescription>
+            </div>
+          </div>
+        </DialogHeader>
+
+        <form id="activity-form" className="space-y-3" onSubmit={save}>
+          <FormSection icon={ClipboardList} title="Información de la actividad" className="sm:grid-cols-6">
+            <Field label="Nombre de la actividad" required className="sm:col-span-6">
+              <WithIcon icon={FileText}><Input className="pl-8" value={form.title} onChange={(event) => set({ title: event.target.value })} maxLength={200} placeholder="Ej. Día de la Madre" required /></WithIcon>
+            </Field>
+            <Field label="Fecha" required className="sm:col-span-2"><Input type="date" value={form.startDate} onChange={(event) => set({ startDate: event.target.value, endDate: '' })} required /></Field>
+            <Field label="Hora de inicio" className="sm:col-span-2"><Input type="time" value={form.startTime} onChange={(event) => set({ startTime: event.target.value })} /></Field>
+            <Field label="Hora de fin" className="sm:col-span-2"><Input type="time" value={form.endTime} onChange={(event) => set({ endTime: event.target.value })} /></Field>
+            <Field label="Comité de gestión" required className="sm:col-span-4">
+              <WithIcon icon={Layers}>
+                <Select className="pl-8" value={form.commissionId} required onChange={(commissionId) => set({ commissionId })}
+                  options={[{ value: '', label: 'Seleccione un comité' }, ...commissions.filter((item) => item.active || String(item.id) === form.commissionId).map((item) => ({ value: String(item.id), label: item.name }))]} />
+              </WithIcon>
+            </Field>
+            <Field label="Tipo de actividad" required className="sm:col-span-2">
+              <WithIcon icon={Flag}><Select className="pl-8" value={form.type} onChange={(type) => set({ type })} options={opts(ACTIVITY_TYPES, 'Seleccione')} required /></WithIcon>
+            </Field>
+            <fieldset className="sm:col-span-6">
+              <legend className="mb-1.5 text-xs font-semibold">Nivel / Alcance<span className="text-destructive"> *</span></legend>
+              <div className="flex flex-wrap items-center gap-2">
+                <Users className="mr-1 size-4 text-muted-foreground" aria-hidden />
+                {LEVEL_SCOPE.map((option) => (
+                  <label key={option.value} className={cn('flex h-9 min-w-32 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/40',
+                    form.level === option.value ? 'border-primary bg-primary/[0.07] font-semibold text-primary' : 'border-input bg-card hover:bg-muted/50')}>
+                    <input type="radio" name="activity-level" value={option.value} checked={form.level === option.value} onChange={() => set({ level: option.value })} className="size-4 accent-primary" />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+          </FormSection>
+
+          <FormSection icon={Users} title="Responsables de la actividad" className={cn(levels.length > 1 && 'sm:grid-cols-2')}>
+            {levels.map((level) => (
+              <LevelStaff key={level} level={level} value={form.staff[level]} teachers={teachers} onChange={(value) => set({ staff: { ...form.staff, [level]: value } })} />
+            ))}
+            {!teachers.length && <p className="text-xs text-muted-foreground sm:col-span-2">No hay docentes activos registrados. Agrégalos en la sección Docentes.</p>}
+          </FormSection>
+
+          <FormSection icon={ClipboardList} title="Descripción de la actividad">
+            <div className="relative">
+              <Textarea rows={3} className="pb-6" value={form.description} onChange={(event) => set({ description: event.target.value.slice(0, DESCRIPTION_MAX) })} maxLength={DESCRIPTION_MAX}
+                placeholder="Describe brevemente la actividad y quiénes participan." aria-label="Descripción de la actividad" />
+              <span className="pointer-events-none absolute bottom-1.5 right-3 text-xs tabular-nums text-muted-foreground">{form.description.length}/{DESCRIPTION_MAX}</span>
+            </div>
+          </FormSection>
+        </form>
+
+        <DialogFooter className="gap-2 sm:items-center sm:justify-between">
+          <p className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground"><InfoIcon className="size-3.5 shrink-0" /> Los campos marcados con <span className="text-destructive">*</span> son obligatorios.</p>
+          <span className="flex justify-end gap-2">
+            <Button type="button" variant="outline" disabled={saving} onClick={onClose}><X /> Cancelar</Button>
+            <Button type="submit" form="activity-form" disabled={saving}><Save /> {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar actividad'}</Button>
+          </span>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -367,6 +476,9 @@ export function ActivityDetail({ id, onClose, onChanged, initialTab = 'info' }) 
                 <Info label="Lugar">{item.place}</Info>
                 <Info label="Comisión">{item.commissionName ? `${item.commissionName}${item.commissionCoordinator ? ` (coord. ${item.commissionCoordinator})` : ''}` : ''}</Info>
                 <Info label="Responsable directo">{item.responsible}</Info>
+                {staffLevels(item.level).filter((level) => item.staff?.[level]).map((level) => (
+                  <Info key={level} label={`Responsables · ${level}`}>{[item.staff[level].lead, ...item.staff[level].support.map((name) => `${name} (apoyo)`)].filter(Boolean).join(', ')}</Info>
+                ))}
                 <Info label="Avance de tareas"><Progress value={item.tasks.progress} /></Info>
                 <Info label="Presupuesto estimado">{soles(item.budget)}</Info>
                 <Info label="Costo de recursos">{soles(item.resources.cost)}</Info>

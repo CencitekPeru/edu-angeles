@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs'
 import mysql from 'mysql2/promise'
 import { config } from './config.js'
 import { upcomingWeekdays } from '../src/lib/time.js'
-import { parsePermissions } from '../src/lib/accessModel.js'
+import { parsePermissions, parseRoles } from '../src/lib/accessModel.js'
 
 export let pool
 
@@ -70,6 +70,8 @@ export async function initDb() {
     ['notes', "VARCHAR(500) NOT NULL DEFAULT ''"],
     // Custom module permissions (JSON); NULL = the role's defaults.
     ['permissions', 'TEXT NULL'],
+    // Additional staff roles (JSON list) on top of `role`, e.g. an Auxiliar who is also Psicología.
+    ['extra_roles', 'VARCHAR(120) NULL'],
   ]) {
     const [existing] = await pool.query('SHOW COLUMNS FROM users LIKE ?', [name])
     if (!existing.length) await pool.query(`ALTER TABLE users ADD COLUMN ${name} ${type}`)
@@ -196,6 +198,7 @@ export function mapUser(row) {
     dni: row.dni || '',
     profilePhoto: row.profile_photo || null,
     role: row.role,
+    extraRoles: row.role === 'admin' ? [] : parseRoles(row.extra_roles).filter((role) => role !== row.role),
     subject: row.subject,
     active: Boolean(row.active),
     permissions: parsePermissions(row.permissions),

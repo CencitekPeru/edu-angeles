@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { config } from './config.js'
 import { getPool, mapUser } from './db.js'
-import { apiAccessError, canChange, moduleForApi } from '../src/lib/accessModel.js'
+import { actionForRequest, apiAccessError, can, moduleForApi } from '../src/lib/accessModel.js'
 import { GRADES, SECTIONS } from '../src/lib/reservations.js'
 
 const uploadDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')
@@ -999,7 +999,7 @@ export function campusRouter() {
     const profilePhoto = `/api/uploads/${file.filename}`
     await getPool().query('UPDATE users SET profile_photo = ? WHERE id = ?', [profilePhoto, req.user.id])
     const [rows] = await getPool().query(
-      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?',
+      'SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active FROM users WHERE id = ?',
       [req.user.id],
     )
     res.json({ ok: true, user: mapUser(rows[0]) })
@@ -2037,7 +2037,7 @@ export async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, config.jwtSecret)
     if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await getPool().query(
-      'SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })
@@ -2052,11 +2052,12 @@ export async function requireAuth(req, res, next) {
 }
 
 export function requireAdmin(req, res, next) {
-  // Coordinación, or anyone with «Editar» on the module of this route (custom permissions).
+  // Coordinación, or anyone with the action this request needs on its module (create / edit / delete).
   if (req.user.role === 'admin') return next()
   const module = moduleForApi(req.originalUrl.split('?')[0])
-  if (module && canChange(req.user, module)) return next()
-  return res.status(403).json({ ok: false, error: module ? 'Tienes acceso de solo consulta en este módulo.' : 'Solo coordinación puede hacer esto.' })
+  const path = req.originalUrl.split('?')[0]
+  if (module && can(req.user, module, actionForRequest(req.method, path))) return next()
+  return res.status(403).json({ ok: false, error: module ? 'No tienes permiso para esta acción en este módulo.' : 'Solo coordinación puede hacer esto.' })
 }
 
 /** Allows the request only for the given roles. */

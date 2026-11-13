@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { accessOf, canChange, canSee, firstPathFor, moduleForPath } from './accessModel'
+import { ACTIONS, MODULE_KEYS, can, canChange, canSee, firstPathFor, levelOf, moduleForPath } from './accessModel'
 
 /**
  * Roles:
@@ -21,7 +21,8 @@ export const ROLE_LABEL = {
 
 export const STAFF_ROLES = ['admin', 'director', 'auxiliar', 'psicologo']
 
-export const isStaff = (user) => STAFF_ROLES.includes(user?.role)
+/** Whether the user enters the admin panel: staff roles, or a teacher who was given permissions in some module. */
+export const isStaff = (user) => STAFF_ROLES.includes(user?.role) || (user?.role === 'teacher' && MODULE_KEYS.some((key) => canSee(user, key)))
 
 export function homePath(user) {
   if (!user) return '/login'
@@ -43,7 +44,6 @@ export function canView(user, path) {
 /** Whether the user may create, edit or delete in a module (its key, e.g. 'asistencia'). */
 export function canEdit(user, module) {
   if (!user) return false
-  if (user.role === 'admin') return true
   return Boolean(module) && canChange(user, module)
 }
 
@@ -62,5 +62,16 @@ export function useLevel() {
   const { user } = useApp()
   const { pathname } = useLocation()
   const module = moduleForPath(pathname)
-  return module ? accessOf(user)[module] : null
+  return module ? levelOf(user, module) : null
+}
+
+/**
+ * Actions allowed on the current page's module (or the one named):
+ * { view, create, edit, delete, export } booleans, for showing or hiding buttons.
+ */
+export function useActions(module) {
+  const { user } = useApp()
+  const { pathname } = useLocation()
+  const key = module || moduleForPath(pathname)
+  return Object.fromEntries(ACTIONS.map((action) => [action, Boolean(key) && can(user, key, action)]))
 }

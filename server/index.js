@@ -15,7 +15,19 @@ import { activitiesRouter, ensureActivities } from './activities.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
-import { apiAccessError, canChange, canSee, moduleForApi, parsePermissions } from '../src/lib/accessModel.js'
+import { EDITABLE_ROLES, ROLE_DEFAULTS, parseRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
+
+/** Role permissions edited in «Roles y permisos»: only the levels that differ from the built-in defaults are stored. */
+async function ensureRoles() {
+  await pool.query(`CREATE TABLE IF NOT EXISTS role_permissions (
+    role VARCHAR(20) PRIMARY KEY,
+    permissions TEXT NOT NULL,
+    updated_by INT UNSIGNED NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  const [rows] = await pool.query('SELECT role, permissions FROM role_permissions')
+  setRolePermissions(Object.fromEntries(rows.map((row) => [row.role, row.permissions])))
+}
 
 const app = express()
 const frontendDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
@@ -79,12 +91,12 @@ app.post('/api/auth/login', wrap(async (req, res) => {
 }))
 
 app.get('/api/auth/me', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: rows[0] ? mapUser(rows[0]) : req.user })
 }))
 
 app.get('/api/profile', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   if (!rows[0]) return res.status(404).json({ ok: false, error: 'No se encontró el perfil.' })
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
@@ -105,13 +117,13 @@ app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
   const [duplicateDni] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
   if (duplicateDni.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   await pool.query('UPDATE users SET name = ?, email = ?, dni = ? WHERE id = ?', [name, email, dni, req.user.id])
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
 app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
   const [users, requests, notifications] = await Promise.all([
-    pool.query(`SELECT id, name, email, ${canSee(req.user, 'usuarios') ? `dni, ${USER_PROFILE_COLUMNS}, permissions, ` : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
+    pool.query(`SELECT id, name, email, ${canSee(req.user, 'usuarios') ? `dni, ${USER_PROFILE_COLUMNS}, permissions, ` : ''}profile_photo, role, extra_roles, subject, active FROM users ORDER BY role DESC, name`),
     loadRequests(req.user),
     pool.query(
       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30',
@@ -121,6 +133,7 @@ app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
   res.json({
     ok: true,
     users: users[0].map(mapUser),
+    rolePermissions: rolePermissions(),
     requests,
     notifications: notifications[0].map(mapNotification),
   })
@@ -366,7 +379,7 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes],
   )
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
   const user = mapUser(rows[0])
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
@@ -426,22 +439,44 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
     const [rows] = await pool.query('SELECT id FROM users WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
   }
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [req.params.id])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [req.params.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
 /** Custom module permissions of a staff account. Only Coordinación CIST assigns them (no self-escalation). */
 app.patch('/api/users/:id/permissions', requireAuth, wrap(async (req, res) => {
-  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede asignar permisos.' })
+  if (req.user.role !== 'admin' || !can(req.user, 'usuarios', 'edit')) return res.status(403).json({ ok: false, error: 'Solo el administrador (Coordinación CIST) puede asignar permisos.' })
   const [targets] = await pool.query('SELECT id, role FROM users WHERE id = ?', [req.params.id])
   const target = targets[0]
   if (!target) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
-  if (target.role === 'admin') return res.status(400).json({ ok: false, error: 'Coordinación CIST siempre tiene acceso completo; no se le asignan permisos.' })
-  if (target.role === 'teacher') return res.status(400).json({ ok: false, error: 'Los docentes usan su propio panel de reservas; para darle acceso al panel administrativo cámbiale el rol.' })
+  // Nobody changes their own permissions, so the system always keeps an administrator with full access.
+  if (Number(target.id) === Number(req.user.id)) return res.status(400).json({ ok: false, error: 'No puedes cambiar tus propios permisos.' })
   // null (or an empty object) restores the role's defaults.
   const permissions = req.body.permissions === null ? null : parsePermissions(req.body.permissions)
   await pool.query('UPDATE users SET permissions = ? WHERE id = ?', [permissions ? JSON.stringify(permissions) : null, req.params.id])
+  // Additional roles chosen with the role checkboxes (the main role stays in `role`).
+  if (req.body.roles !== undefined) {
+    const extra = parseRoles(req.body.roles).filter((role) => role !== target.role)
+    await pool.query('UPDATE users SET extra_roles = ? WHERE id = ?', [extra.length ? JSON.stringify(extra) : null, req.params.id])
+  }
   res.json({ ok: true, permissions })
+}))
+
+/** Default permissions of a role. Only Coordinación CIST edits them; `null` restores the built-in defaults. */
+app.put('/api/roles/:role/permissions', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede modificar los permisos de los roles.' })
+  const { role } = req.params
+  if (!EDITABLE_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'Los permisos de este rol no se pueden modificar.' })
+  const actions = req.body.permissions === null ? null : parsePermissions(req.body.permissions)
+  const changed = actions ? Object.fromEntries(Object.entries(actions).filter(([key, list]) => !sameActions(ROLE_DEFAULTS[role][key], list))) : {}
+  if (Object.keys(changed).length) {
+    await pool.query('INSERT INTO role_permissions (role, permissions, updated_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permissions = VALUES(permissions), updated_by = VALUES(updated_by)',
+      [role, JSON.stringify(changed), req.user.id])
+  } else {
+    await pool.query('DELETE FROM role_permissions WHERE role = ?', [role])
+  }
+  setRolePermissions({ ...rolePermissions(), [role]: Object.keys(changed).length ? changed : null })
+  res.json({ ok: true, rolePermissions: rolePermissions() })
 }))
 
 app.post('/api/users/:id/active', requireAuth, requireAdmin, wrap(async (req, res) => {
@@ -518,6 +553,7 @@ if (process.env.NODE_ENV !== 'production') {
     await ensureAssets()
     await ensureActivities()
     await ensureParents()
+    await ensureRoles()
     res.json({ ok: true })
   }))
 }
@@ -563,6 +599,7 @@ initDb()
     await ensureAssets()
     await ensureActivities()
     await ensureParents()
+    await ensureRoles()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)
       console.log(`Base de datos ${config.db.database} en ${config.db.host}:${config.db.port}`)
@@ -591,7 +628,7 @@ async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, config.jwtSecret)
     if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await pool.query(
-      'SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })
@@ -606,11 +643,12 @@ async function requireAuth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  // Coordinación, or anyone with «Editar» on the module of this route (custom permissions).
+  // Coordinación, or anyone with the action this request needs on its module (create / edit / delete).
   if (req.user.role === 'admin') return next()
   const module = moduleForApi(req.originalUrl.split('?')[0])
-  if (module && canChange(req.user, module)) return next()
-  return res.status(403).json({ ok: false, error: module ? 'Tienes acceso de solo consulta en este módulo.' : 'Solo coordinación puede hacer esto.' })
+  const path = req.originalUrl.split('?')[0]
+  if (module && can(req.user, module, actionForRequest(req.method, path))) return next()
+  return res.status(403).json({ ok: false, error: module ? 'No tienes permiso para esta acción en este módulo.' : 'Solo coordinación puede hacer esto.' })
 }
 
 async function loadRequests(user) {

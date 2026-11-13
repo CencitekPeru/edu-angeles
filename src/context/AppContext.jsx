@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { api, getToken, setToken, upload } from '../lib/api'
+import { setRolePermissions } from '../lib/accessModel'
 
 const AppContext = createContext(null)
 let toastSequence = 0
@@ -7,6 +8,9 @@ let toastSequence = 0
 export function AppProvider({ children }) {
   const [user, setUser] = useState(null)
   const [users, setUsers] = useState([])
+  // Role permissions edited in «Roles y permisos»; kept in state so the panel re-renders when they change.
+  const [rolePermissions, setRolePermissionsState] = useState({})
+  const applyRoles = (map) => setRolePermissionsState(setRolePermissions(map || {}))
   const [requests, setRequests] = useState([])
   const [notifications, setNotifications] = useState([])
   const [rooms, setRooms] = useState([])
@@ -36,6 +40,7 @@ export function AppProvider({ children }) {
       return data
     }
     setOffline(false)
+    applyRoles(data.rolePermissions)
     setUsers(data.users)
     setRequests(data.requests)
     setNotifications(data.notifications)
@@ -56,6 +61,7 @@ export function AppProvider({ children }) {
           setUser(me.user)
           const data = await api('/api/bootstrap')
           if (data.ok && !cancel) {
+            applyRoles(data.rolePermissions)
             setUsers(data.users)
             setRequests(data.requests)
             setNotifications(data.notifications)
@@ -233,6 +239,8 @@ export function AppProvider({ children }) {
     resetDemo,
     refreshRooms,
     refresh,
+    rolePermissions,
+    applyRoles,
   }
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
