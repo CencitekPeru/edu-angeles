@@ -24,6 +24,12 @@ import PsychologyAppointments from './pages/psychology/Appointments'
 import PsychologyReferrals from './pages/psychology/Referrals'
 import PsychologyReports from './pages/psychology/Reports'
 import PsychologyStudents from './pages/psychology/AttendedStudents'
+import ActivitiesPanel from './pages/activities/Panel'
+import ActivitiesCalendar from './pages/activities/CalendarView'
+import ActivitiesList from './pages/activities/ActivitiesList'
+import ActivityCommissions from './pages/activities/Commissions'
+import ActivityFollowUp from './pages/activities/FollowUp'
+import ActivityResources from './pages/activities/ResourcesReports'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
 import { FixedHoursPage } from './pages/campus/Reports'
@@ -131,6 +137,12 @@ function Gate() {
             <Route path="/admin/psicologia/seguimiento" element={<PsychologyAppointments />} />
             <Route path="/admin/psicologia/derivaciones" element={<PsychologyReferrals />} />
             <Route path="/admin/psicologia/reportes" element={<PsychologyReports />} />
+            <Route path="/admin/actividades" element={<ActivitiesPanel />} />
+            <Route path="/admin/actividades/calendario" element={<ActivitiesCalendar />} />
+            <Route path="/admin/actividades/programadas" element={<ActivitiesList />} />
+            <Route path="/admin/actividades/comisiones" element={<ActivityCommissions />} />
+            <Route path="/admin/actividades/seguimiento" element={<ActivityFollowUp />} />
+            <Route path="/admin/actividades/recursos" element={<ActivityResources />} />
             {/* Old addresses of the module. */}
             <Route path="/admin/psicologia/citas" element={<Navigate to="/admin/psicologia/seguimiento" replace />} />
             <Route path="/admin/profesores/registrar" element={<Navigate to="/admin/docentes" replace />} />

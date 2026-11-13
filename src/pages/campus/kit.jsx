@@ -128,6 +128,16 @@ export function Pill({ value, className }) {
     'Sin respuesta': 'neutral',
     'No atendida': 'bad',
     Reprogramada: 'neutral',
+    // Gestión de actividades
+    Planificada: 'brand',
+    'En preparación': 'warn',
+    'En ejecución': 'warn',
+    Postergada: 'neutral',
+    Completada: 'ok',
+    Solicitado: 'brand',
+    Aprobado: 'ok',
+    Entregado: 'ok',
+    'No disponible': 'bad',
     Concluido: 'ok',
   }
   const labels = {

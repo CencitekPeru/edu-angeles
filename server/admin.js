@@ -23,6 +23,7 @@ export const CLEAN_GROUPS = {
   asistencia: { label: 'Registros de asistencia', tables: ['attendance', 'attendance_audit', 'justifications'], requires: [] },
   psicologia: { label: 'Atención psicológica (casos, sesiones y derivaciones)', tables: ['psych_referrals', 'psych_sessions', 'psych_cases'], requires: [] },
   estudiantes: { label: 'Estudiantes y apoderados', tables: ['guardian_students', 'guardians', 'students'], requires: ['asistencia', 'psicologia'] },
+  actividades: { label: 'Gestión de actividades (actividades, tareas, recursos, informes y comisiones)', tables: ['activity_reports', 'activity_resources', 'activity_tasks', 'activities', 'commissions'], requires: [] },
   notificaciones: { label: 'Notificaciones e historial de reportes', tables: ['notifications', 'report_logs'], requires: [] },
   catalogos: { label: 'Catálogos (categorías, ambientes, salas y códigos patrimoniales)', tables: ['categories', 'places', 'patrimonial_codes', 'rooms'], requires: ['inventario', 'reservas'] },
   usuarios: { label: 'Usuarios (se conserva tu cuenta)', tables: [], requires: ['reservas'] },

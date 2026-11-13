@@ -11,6 +11,7 @@ import { campusRouter, ensureCampus } from './campus.js'
 import { adminRouter } from './admin.js'
 import { ensurePsychology, psychologyRouter } from './psychology.js'
 import { assetsRouter, ensureAssets } from './assets.js'
+import { activitiesRouter, ensureActivities } from './activities.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
@@ -25,6 +26,7 @@ app.use(attendanceRouter())
 app.use(parentsRouter())
 app.use(psychologyRouter())
 app.use(assetsRouter())
+app.use(activitiesRouter())
 app.use(adminRouter())
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
@@ -514,6 +516,7 @@ if (process.env.NODE_ENV !== 'production') {
     await ensureAttendance()
     await ensurePsychology()
     await ensureAssets()
+    await ensureActivities()
     await ensureParents()
     res.json({ ok: true })
   }))
@@ -558,6 +561,7 @@ initDb()
     await ensureAttendance()
     await ensurePsychology()
     await ensureAssets()
+    await ensureActivities()
     await ensureParents()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)

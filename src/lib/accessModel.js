@@ -23,6 +23,7 @@ export const MODULES = [
   { key: 'estudiantes', label: 'Estudiantes', group: 'Gestión Escolar', paths: ['/admin/estudiantes'], api: ['/api/students'], privateRead: true },
   { key: 'asistencia', label: 'Asistencia estudiantil', group: 'Gestión Escolar', paths: ['/admin/asistencia'], api: ['/api/attendance', '/api/justifications'], privateRead: true },
   { key: 'psicologia', label: 'Atención psicológica', group: 'Gestión Escolar', paths: ['/admin/psicologia'], api: ['/api/psychology'], privateRead: true },
+  { key: 'actividades', label: 'Gestión de actividades (calendario, comisiones, seguimiento, recursos e informes)', group: 'Gestión de Actividades', paths: ['/admin/actividades'], api: ['/api/activities', '/api/activity-tasks', '/api/activity-resources', '/api/activity-reports', '/api/commissions'], privateRead: true },
   { key: 'reservas', label: 'Reservas (solicitudes, calendario y horarios)', group: 'Gestión Reservas', paths: ['/admin/solicitudes', '/admin/calendario', '/admin/horarios'], api: ['/api/fixed-schedules'] },
   { key: 'usuarios', label: 'Usuarios y docentes', group: 'Administración', paths: ['/admin/profesores', '/admin/docentes'], api: ['/api/users'] },
   { key: 'configuracion', label: 'Configuración y base de datos', group: 'Administración', paths: ['/admin/configuracion'], api: ['/api/admin'], privateRead: true },
@@ -107,6 +108,6 @@ export function firstPathFor(user) {
   const access = accessOf(user)
   const order = [['dashboard', '/admin'], ['inventario', '/admin/inventario'], ['incidencias', '/admin/incidencias'], ['mantenimiento', '/admin/mantenimiento'],
     ['reportes', '/admin/reportes'], ['asistencia', '/admin/asistencia'], ['estudiantes', '/admin/estudiantes'], ['psicologia', '/admin/psicologia/atenciones'],
-    ['reservas', '/admin/solicitudes'], ['usuarios', '/admin/profesores'], ['configuracion', '/admin/configuracion']]
+    ['actividades', '/admin/actividades'], ['reservas', '/admin/solicitudes'], ['usuarios', '/admin/profesores'], ['configuracion', '/admin/configuracion']]
   return order.find(([key]) => access[key] !== 'none')?.[1] || '/admin/perfil'
 }
