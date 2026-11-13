@@ -18,17 +18,12 @@ export const PSY_EXTERNAL_INSTITUTIONS = ['Centro de Salud (MINSA)', 'Centro de 
 export const PSY_REFERRAL_STATUS = ['En proceso', 'Atendida', 'No atendida']
 
 /**
- * Psychological care: confidential, so only coordination (admin) and the psychology role work in it.
- * Dirección can read it, like the rest of the panel; every other role is kept out.
+ * Psychological care is confidential: by default only Coordinación and the Psicología role use it and
+ * Dirección can read it, but the effective levels come from each user's permissions.
  */
-export function psychologyAccess(req, res, next) {
-  const role = req.user.role
-  if (role === 'admin' || role === 'psicologo') return next()
-  if (role === 'director') {
-    if (req.method === 'GET') return next()
-    return res.status(403).json({ ok: false, error: 'Tu rol (Dirección) es de solo consulta.' })
-  }
-  return res.status(403).json({ ok: false, error: 'No tienes permiso para el módulo de atención psicológica.' })
+export function psychologyAccess(_req, _res, next) {
+  // Access is decided by the user's permissions, checked in requireAuth (see src/lib/accessModel.js).
+  next()
 }
 
 /** History is kept: only coordination may delete records (to fix a mistake). */

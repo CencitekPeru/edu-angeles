@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Pencil, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundCheck, UserRoundX } from 'lucide-react'
+import { KeyRound, Pencil, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundCheck, UserRoundX } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, PageHeader } from '../components/ui'
 import { Pill, Table } from './campus/kit'
 import { ROLE_LABEL, useCan } from '../lib/permissions'
+import UserPermissionsDialog from './UserPermissions'
 
 const emptyUser = { name: '', email: '', dni: '', gender: '', phone: '', role: 'admin' }
 const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
@@ -78,6 +79,9 @@ export default function Teachers() {
   const [saving, setSaving] = useState(false)
   const [editing, setEditing] = useState(null)
   const [deleting, setDeleting] = useState(null)
+  const [permissionsOf, setPermissionsOf] = useState(null)
+  // Only Coordinación assigns permissions, and only to staff accounts other than Coordinación.
+  const canAssign = (user) => currentUser.role === 'admin' && !['admin', 'teacher'].includes(user.role)
 
   const list = users
     .filter((user) => !roleFilter || user.role === roleFilter)
@@ -230,12 +234,19 @@ export default function Teachers() {
               { key: 'role', label: 'Rol', render: (user) => (
                 <span className="flex flex-wrap gap-1.5">
                   <Pill value={ROLE_LABEL[user.role] || 'Docente'} />
+                  {user.permissions && <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold text-primary"><KeyRound className="size-3" /> Permisos personalizados</span>}
                   {!user.active && <Pill value="Inactivo" />}
                 </span>
               ) },
               { key: 'createdOn', label: 'Fecha de registro', render: (user) => <span className="whitespace-nowrap tabular-nums">{dmy(user.createdOn)}</span> },
               { key: 'actions', label: 'Acciones', hidden: !canEdit, render: (user) => (
                 <span className="flex items-center gap-1">
+                  {canAssign(user) && (
+                    <Button type="button" variant="ghost" size="icon-sm" className="text-primary hover:text-primary"
+                      onClick={() => setPermissionsOf(user)} title="Asignar permisos" aria-label={`Asignar permisos a ${user.name}`}>
+                      <KeyRound className="size-4" />
+                    </Button>
+                  )}
                   <Button type="button" variant="ghost" size="icon-sm" className="text-muted-foreground hover:text-foreground"
                     onClick={() => { setEditing({ ...user }); setError('') }} title="Editar usuario" aria-label={`Editar ${user.name}`}>
                     <Pencil className="size-4" />
@@ -321,6 +332,7 @@ export default function Teachers() {
         </DialogContent>
       </Dialog>
 
+      {permissionsOf && <UserPermissionsDialog user={permissionsOf} onClose={() => setPermissionsOf(null)} />}
     </div>
   )
 }

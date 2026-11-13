@@ -34,6 +34,7 @@ import { PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { IncidentForm } from './IncidentForm'
 import { FilterLabel, Select, allOption } from '../attendance/shared'
 import { TONE, CHIP_BASE } from '../../lib/tones'
+import { useCan } from '../../lib/permissions'
 
 const PRIORITY = {
   alta: { label: 'Alta', icon: ChevronsUp, tone: TONE.bad.chip },
@@ -71,7 +72,7 @@ function splitDetected(value) {
 
 export function IncidentsPage() {
   const { user, toast } = useApp()
-  const admin = user.role === 'admin'
+  const admin = useCan('incidencias')
   const [rows, setRows] = useState([])
   const [all, setAll] = useState([])
   const [equipment, setEquipment] = useState([])

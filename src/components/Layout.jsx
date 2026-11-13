@@ -51,7 +51,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { NotificationBell } from './Notifications'
-import { ROLE_LABEL, canView, homePath as homeFor, isStaff } from '../lib/permissions'
+import { ROLE_LABEL, canView, homePath as homeFor, isStaff, useLevel } from '../lib/permissions'
 import { ThemeToggle } from './ThemeToggle'
 import { cn } from '@/lib/utils'
 
@@ -197,6 +197,7 @@ export default function Layout() {
   const [open, setOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('nodo-sidebar') === 'collapsed')
   const staff = isStaff(user)
+  const pageLevel = useLevel()
   const items = staff ? navFor(user) : teacherNav
   const profilePath = staff ? '/admin/perfil' : '/panel/perfil'
   const homePath = homeFor(user)
@@ -347,10 +348,10 @@ export default function Layout() {
             </div>
           )}
 
-          {user.role === 'director' && (
+          {staff && pageLevel === 'view' && (
             <div className="flex items-center justify-center gap-2 border-b border-border bg-slate-50 px-4 py-2 text-center text-xs font-medium text-muted-foreground dark:bg-muted">
               <Eye className="size-4 text-primary" />
-              Modo consulta: como Dirección puedes ver y exportar toda la información, pero no registrar ni modificar datos.
+              Modo consulta: en esta sección puedes ver y exportar la información, pero no registrar ni modificar datos.
             </div>
           )}
 

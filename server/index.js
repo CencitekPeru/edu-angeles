@@ -14,6 +14,7 @@ import { assetsRouter, ensureAssets } from './assets.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
+import { apiAccessError, canChange, canSee, moduleForApi, parsePermissions } from '../src/lib/accessModel.js'
 
 const app = express()
 const frontendDirectory = fileURLToPath(new URL('../dist/', import.meta.url))
@@ -76,12 +77,12 @@ app.post('/api/auth/login', wrap(async (req, res) => {
 }))
 
 app.get('/api/auth/me', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: rows[0] ? mapUser(rows[0]) : req.user })
 }))
 
 app.get('/api/profile', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   if (!rows[0]) return res.status(404).json({ ok: false, error: 'No se encontró el perfil.' })
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
@@ -102,13 +103,13 @@ app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
   const [duplicateDni] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
   if (duplicateDni.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   await pool.query('UPDATE users SET name = ?, email = ?, dni = ? WHERE id = ?', [name, email, dni, req.user.id])
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
 app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
   const [users, requests, notifications] = await Promise.all([
-    pool.query(`SELECT id, name, email, ${req.user.role === 'admin' ? `dni, ${USER_PROFILE_COLUMNS}, ` : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
+    pool.query(`SELECT id, name, email, ${canSee(req.user, 'usuarios') ? `dni, ${USER_PROFILE_COLUMNS}, permissions, ` : ''}profile_photo, role, subject, active FROM users ORDER BY role DESC, name`),
     loadRequests(req.user),
     pool.query(
       'SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 30',
@@ -349,6 +350,7 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   const dni = String(req.body.dni || '').trim()
   const role = String(req.body.role || 'teacher')
   if (!ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+  if (role === 'admin' && req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede crear cuentas de coordinación.' })
   const subject = role === 'teacher' ? String(req.body.subject || '').trim() : ROLE_SUBJECT[role]
   if (name.length < 5) return res.status(400).json({ ok: false, error: 'Escribe nombre y apellido.' })
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'El correo no es válido.' })
@@ -367,7 +369,15 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
 
+/** Coordinación accounts can only be changed by Coordinación (their email and DNI are the login). */
+async function mayManage(req, targetId) {
+  if (req.user.role === 'admin') return true
+  const [rows] = await pool.query('SELECT role FROM users WHERE id = ?', [targetId])
+  return rows[0]?.role !== 'admin'
+}
+
 app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!(await mayManage(req, req.params.id))) return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede modificar cuentas de coordinación.' })
   const profile = profileInput(req.body)
   const name = profile.fullName || String(req.body.name || '').trim()
   const email = String(req.body.email || '').trim().toLowerCase()
@@ -384,6 +394,9 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
   if (target.role !== 'teacher' && req.body.role) {
     role = String(req.body.role)
     if (!STAFF.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+    if ((role === 'admin' || target.role === 'admin') && role !== target.role && req.user.role !== 'admin') {
+      return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede otorgar o quitar el rol de coordinación.' })
+    }
     if (Number(target.id) === Number(req.user.id) && role !== 'admin') {
       return res.status(400).json({ ok: false, error: 'No puedes quitarte el rol de coordinación a ti mismo.' })
     }
@@ -415,7 +428,22 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
+/** Custom module permissions of a staff account. Only Coordinación CIST assigns them (no self-escalation). */
+app.patch('/api/users/:id/permissions', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede asignar permisos.' })
+  const [targets] = await pool.query('SELECT id, role FROM users WHERE id = ?', [req.params.id])
+  const target = targets[0]
+  if (!target) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
+  if (target.role === 'admin') return res.status(400).json({ ok: false, error: 'Coordinación CIST siempre tiene acceso completo; no se le asignan permisos.' })
+  if (target.role === 'teacher') return res.status(400).json({ ok: false, error: 'Los docentes usan su propio panel de reservas; para darle acceso al panel administrativo cámbiale el rol.' })
+  // null (or an empty object) restores the role's defaults.
+  const permissions = req.body.permissions === null ? null : parsePermissions(req.body.permissions)
+  await pool.query('UPDATE users SET permissions = ? WHERE id = ?', [permissions ? JSON.stringify(permissions) : null, req.params.id])
+  res.json({ ok: true, permissions })
+}))
+
 app.post('/api/users/:id/active', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!(await mayManage(req, req.params.id))) return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede modificar cuentas de coordinación.' })
   const active = req.body.active ? 1 : 0
   if (Number(req.params.id) === Number(req.user.id)) return res.status(400).json({ ok: false, error: 'No puedes desactivar tu propia cuenta.' })
   const [result] = await pool.query('UPDATE users SET active = ? WHERE id = ?', [active, req.params.id])
@@ -424,6 +452,7 @@ app.post('/api/users/:id/active', requireAuth, requireAdmin, wrap(async (req, re
 }))
 
 app.delete('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
+  if (!(await mayManage(req, req.params.id))) return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede modificar cuentas de coordinación.' })
   if (Number(req.params.id) === Number(req.user.id)) {
     return res.status(400).json({ ok: false, error: 'No puedes eliminar tu propia cuenta.' })
   }
@@ -558,11 +587,14 @@ async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, config.jwtSecret)
     if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await pool.query(
-      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })
     req.user = mapUser(rows[0])
+    // Per-user permissions: writes need «Editar» on their module, private modules need «Ver» to read.
+    const denied = apiAccessError(req.user, req.method, req.originalUrl.split('?')[0])
+    if (denied) return res.status(403).json({ ok: false, error: denied })
     next()
   } catch {
     return res.status(401).json({ ok: false, error: 'Inicia sesión de nuevo.' })
@@ -570,14 +602,17 @@ async function requireAuth(req, res, next) {
 }
 
 function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: req.user.role === 'director' ? 'Tu rol (Dirección) es de solo consulta.' : 'Solo coordinación puede hacer esto.' })
-  next()
+  // Coordinación, or anyone with «Editar» on the module of this route (custom permissions).
+  if (req.user.role === 'admin') return next()
+  const module = moduleForApi(req.originalUrl.split('?')[0])
+  if (module && canChange(req.user, module)) return next()
+  return res.status(403).json({ ok: false, error: module ? 'Tienes acceso de solo consulta en este módulo.' : 'Solo coordinación puede hacer esto.' })
 }
 
 async function loadRequests(user) {
   const sql = `SELECT r.*, rooms.name AS room_name
     FROM requests r LEFT JOIN rooms ON rooms.id = r.room_id`
-  const [rows] = user.role === 'admin' || user.role === 'director'
+  const [rows] = canSee(user, 'reservas')
     ? await pool.query(`${sql} ORDER BY r.date, r.start_time`)
     : await pool.query(
       `${sql} WHERE r.status IN ('pending', 'approved') OR r.teacher_id = ? ORDER BY r.date, r.start_time`,

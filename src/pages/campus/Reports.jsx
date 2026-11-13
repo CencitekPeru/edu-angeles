@@ -9,9 +9,11 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Choice, Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Panel, Table } from './kit'
+import { useCan } from '../../lib/permissions'
 
 export function FixedHoursPage() {
   const { user, users, rooms, toast } = useApp()
+  const canEdit = useCan('reservas')
   const [rows, setRows] = useState([])
   const [form, setForm] = useState({ teacherId: '', roomId: '', weekday: '1', startTime: '08:00', endTime: '09:30', grade: GRADES[0], section: SECTIONS[0], purpose: 'Horario fijo' })
   const [openHour, setOpenHour] = useState(false)
@@ -65,7 +67,7 @@ export function FixedHoursPage() {
       <Panel title="Horarios fijos semanales">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-sm text-slate-600">Estos bloques aparecen solos cada semana y no permiten otra reserva en la misma sala.</p>
-          {user.role === 'admin' && <Button type="button" onClick={() => { resetForm(); setOpenHour(true) }}>Agregar horario</Button>}
+          {canEdit && <Button type="button" onClick={() => { resetForm(); setOpenHour(true) }}>Agregar horario</Button>}
         </div>
         <Dialog open={openHour} onOpenChange={(open) => { setOpenHour(open); if (!open) resetForm() }}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -130,7 +132,7 @@ export function FixedHoursPage() {
             )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setViewing(null)}>Cerrar</Button>
-              {user.role === 'admin' && viewing && (
+              {canEdit && viewing && (
                 <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => { const selected = viewing; setViewing(null); editSchedule(selected) }}>
                   <Pencil className="size-4" />
                 </Button>
@@ -153,7 +155,7 @@ export function FixedHoursPage() {
                 <Button type="button" variant="ghost" size="icon-sm" aria-label="Ver horario" title="Ver horario" onClick={() => setViewing(row)}>
                   <Eye className="size-4" />
                 </Button>
-                {user.role === 'admin' && (
+                {canEdit && (
                   <>
                     <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar horario" title="Editar horario" onClick={() => editSchedule(row)}>
                       <Pencil className="size-4" />

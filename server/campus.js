@@ -6,6 +6,7 @@ import jwt from 'jsonwebtoken'
 import multer from 'multer'
 import { config } from './config.js'
 import { getPool, mapUser } from './db.js'
+import { apiAccessError, canChange, moduleForApi } from '../src/lib/accessModel.js'
 import { GRADES, SECTIONS } from '../src/lib/reservations.js'
 
 const uploadDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'uploads')
@@ -1054,7 +1055,7 @@ export function campusRouter() {
 
   const REPORT_KINDS = ['inventario', 'incidencias', 'mantenimientos', 'reservas', 'resumen']
 
-  router.get('/api/reports', requireAuth, requireRoles('admin', 'director'), wrap(async (_req, res) => {
+  router.get('/api/reports', requireAuth, wrap(async (_req, res) => {
     const [[{ total }]] = await getPool().query('SELECT COUNT(*) AS total FROM report_logs')
     const [rows] = await getPool().query(
       `SELECT r.id, r.kind, r.params, r.summary, r.created_at, u.name AS user_name
@@ -1076,7 +1077,7 @@ export function campusRouter() {
     })
   }))
 
-  router.post('/api/reports', requireAuth, requireRoles('admin', 'director'), wrap(async (req, res) => {
+  router.post('/api/reports', requireAuth, wrap(async (req, res) => {
     const kind = String(req.body.kind || '')
     if (!REPORT_KINDS.includes(kind)) return res.status(400).json({ ok: false, error: 'Tipo de reporte no válido.' })
     const params = req.body.params && typeof req.body.params === 'object' ? req.body.params : {}
@@ -2036,11 +2037,14 @@ export async function requireAuth(req, res, next) {
     const payload = jwt.verify(token, config.jwtSecret)
     if (payload.kind === 'guardian') return res.status(401).json({ ok: false, error: 'Inicia sesión.' })
     const [rows] = await getPool().query(
-      'SELECT id, name, email, dni, profile_photo, role, subject, active FROM users WHERE id = ? AND active = 1',
+      'SELECT id, name, email, dni, profile_photo, role, subject, active, permissions FROM users WHERE id = ? AND active = 1',
       [payload.sub],
     )
     if (!rows[0]) return res.status(401).json({ ok: false, error: 'Tu sesión ya no es válida.' })
     req.user = mapUser(rows[0])
+    // Per-user permissions: writes need «Editar» on their module, private modules need «Ver» to read.
+    const denied = apiAccessError(req.user, req.method, req.originalUrl.split('?')[0])
+    if (denied) return res.status(403).json({ ok: false, error: denied })
     next()
   } catch {
     return res.status(401).json({ ok: false, error: 'Inicia sesión de nuevo.' })
@@ -2048,8 +2052,11 @@ export async function requireAuth(req, res, next) {
 }
 
 export function requireAdmin(req, res, next) {
-  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: req.user.role === 'director' ? 'Tu rol (Dirección) es de solo consulta.' : 'Solo coordinación puede hacer esto.' })
-  next()
+  // Coordinación, or anyone with «Editar» on the module of this route (custom permissions).
+  if (req.user.role === 'admin') return next()
+  const module = moduleForApi(req.originalUrl.split('?')[0])
+  if (module && canChange(req.user, module)) return next()
+  return res.status(403).json({ ok: false, error: module ? 'Tienes acceso de solo consulta en este módulo.' : 'Solo coordinación puede hacer esto.' })
 }
 
 /** Allows the request only for the given roles. */

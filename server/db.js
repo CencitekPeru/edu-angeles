@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import mysql from 'mysql2/promise'
 import { config } from './config.js'
 import { upcomingWeekdays } from '../src/lib/time.js'
+import { parsePermissions } from '../src/lib/accessModel.js'
 
 export let pool
 
@@ -67,6 +68,8 @@ export async function initDb() {
     ['phone', "VARCHAR(30) NOT NULL DEFAULT ''"],
     ['employment_condition', "VARCHAR(40) NOT NULL DEFAULT ''"],
     ['notes', "VARCHAR(500) NOT NULL DEFAULT ''"],
+    // Custom module permissions (JSON); NULL = the role's defaults.
+    ['permissions', 'TEXT NULL'],
   ]) {
     const [existing] = await pool.query('SHOW COLUMNS FROM users LIKE ?', [name])
     if (!existing.length) await pool.query(`ALTER TABLE users ADD COLUMN ${name} ${type}`)
@@ -195,6 +198,7 @@ export function mapUser(row) {
     role: row.role,
     subject: row.subject,
     active: Boolean(row.active),
+    permissions: parsePermissions(row.permissions),
     ...(row.first_names !== undefined ? {
       firstNames: row.first_names || '',
       lastNames: row.last_names || '',

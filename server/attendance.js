@@ -248,15 +248,10 @@ const guardianOf = (data) => ({ dni: data.guardianDni, name: data.guardian, phon
 
 const newToken = () => crypto.randomBytes(12).toString('hex')
 
-/** Attendance module: coordination and auxiliaries work in it; the director can only read. */
-export function attendanceAccess(req, res, next) {
-  const role = req.user.role
-  if (role === 'admin' || role === 'auxiliar') return next()
-  if (role === 'director') {
-    if (req.method === 'GET') return next()
-    return res.status(403).json({ ok: false, error: 'Tu rol (Dirección) es de solo consulta.' })
-  }
-  return res.status(403).json({ ok: false, error: 'No tienes permiso para el módulo de asistencia.' })
+/** Attendance module guard: kept as a hook; who may read or write is decided by the user's permissions. */
+export function attendanceAccess(_req, _res, next) {
+  // Access is decided by the user's permissions, checked in requireAuth (see src/lib/accessModel.js).
+  next()
 }
 
 export function attendanceRouter() {

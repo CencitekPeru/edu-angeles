@@ -171,7 +171,7 @@ function EquipmentDetail({ row, onClose, onEdit }) {
 
 export function EquipmentPage() {
   const { user, toast } = useApp()
-  const admin = user.role === 'admin'
+  const admin = useCan('inventario')
   const [rows, setRows] = useState([])
   const [categories, setCategories] = useState([])
   const [places, setPlaces] = useState([])

@@ -17,6 +17,7 @@ import {
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
+import { canSee } from '../../lib/accessModel'
 import { exportTableXlsx } from '../../lib/exporters'
 import { PageHeader, StatCard } from '../campus/kit'
 import { Button } from '@/components/ui/button'
@@ -115,7 +116,7 @@ async function downloadTemplate() {
 
 export default function StudentsPage() {
   const { toast } = useApp()
-  const canEdit = useCan('asistencia')
+  const canEdit = useCan('estudiantes')
   const [draft, setDraft] = useState({ q: '', level: '', grade: '', section: '' })
   const [filters, setFilters] = useState(draft)
   const { students, stats, loading, reload } = useStudents(filters)
@@ -391,9 +392,13 @@ function StudentDialog({ student, onClose, onSaved }) {
 }
 
 function StudentView({ student, onClose }) {
+  const { user } = useApp()
   const [history, setHistory] = useState(null)
+  // The attendance summary belongs to the attendance module: only shown to who may see it.
+  const seesAttendance = canSee(user, 'asistencia')
 
   useEffect(() => {
+    if (!seesAttendance) return undefined
     let active = true
     const to = new Date().toISOString().slice(0, 10)
     const from = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10)
@@ -401,7 +406,7 @@ function StudentView({ student, onClose }) {
       if (active && result.ok) setHistory(result)
     })
     return () => { active = false }
-  }, [student.code])
+  }, [student.code, seesAttendance])
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
@@ -428,7 +433,7 @@ function StudentView({ student, onClose }) {
             <dt className="text-muted-foreground">Hoy</dt><dd>{student.today ? <StatusChip status={student.today.status} /> : 'Sin registro'}</dd>
           </dl>
         </div>
-        <div>
+        {seesAttendance && <div>
           <p className="mb-2 text-sm font-bold text-foreground">Últimos 30 días</p>
           {history ? (
             <div className="grid grid-cols-3 gap-2 text-center">
@@ -440,7 +445,7 @@ function StudentView({ student, onClose }) {
               ))}
             </div>
           ) : <p className="text-sm text-muted-foreground">Cargando…</p>}
-        </div>
+        </div>}
       </DialogContent>
     </Dialog>
   )
