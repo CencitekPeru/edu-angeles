@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { ACTIONS, MODULE_KEYS, can, canChange, canSee, firstPathFor, levelOf, moduleForPath } from './accessModel'
+import { ACTIONS, MODULE_KEYS, can, canChange, canSee, customRoleList, firstPathFor, isCustomRole, levelOf, moduleActions, moduleForPath } from './accessModel'
 
 /**
  * Roles:
@@ -9,7 +9,8 @@ import { ACTIONS, MODULE_KEYS, can, canChange, canSee, firstPathFor, levelOf, mo
  *  - auxiliar  Auxiliar: student attendance and students.
  *  - psicologo Psicología: only the psychological care module (confidential).
  *  - teacher   Docente: teacher panel (reservations).
- * Those are the defaults; each staff account can get custom permissions per module (see accessModel.js).
+ * Those are the defaults; the administrator can also create new roles in «Roles» (keys like 'r_ab12cd34'),
+ * and each staff account can get custom permissions per module (see accessModel.js).
  */
 export const ROLE_LABEL = {
   admin: 'Coordinación CIST',
@@ -19,10 +20,13 @@ export const ROLE_LABEL = {
   teacher: 'Docente',
 }
 
+/** Name of any role, built-in or created in the panel. */
+export const roleLabel = (role) => ROLE_LABEL[role] || customRoleList().find((item) => item.key === role)?.label || 'Docente'
+
 export const STAFF_ROLES = ['admin', 'director', 'auxiliar', 'psicologo']
 
-/** Whether the user enters the admin panel: staff roles, or a teacher who was given permissions in some module. */
-export const isStaff = (user) => STAFF_ROLES.includes(user?.role) || (user?.role === 'teacher' && MODULE_KEYS.some((key) => canSee(user, key)))
+/** Whether the user enters the admin panel: staff roles (built-in or created), or a teacher who was given permissions in some module. */
+export const isStaff = (user) => STAFF_ROLES.includes(user?.role) || isCustomRole(user?.role) || (user?.role === 'teacher' && MODULE_KEYS.some((key) => canSee(user, key)))
 
 export function homePath(user) {
   if (!user) return '/login'
@@ -62,7 +66,10 @@ export function useLevel() {
   const { user } = useApp()
   const { pathname } = useLocation()
   const module = moduleForPath(pathname)
-  return module ? levelOf(user, module) : null
+  if (!module) return null
+  // Modules where nothing is registered (Dashboard, Reportes) are never "read-only": there is nothing more to allow.
+  if (!moduleActions(module).some((action) => ['create', 'edit', 'delete'].includes(action))) return null
+  return levelOf(user, module)
 }
 
 /**

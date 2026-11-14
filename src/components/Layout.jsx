@@ -53,7 +53,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { NotificationBell } from './Notifications'
-import { ROLE_LABEL, canView, homePath as homeFor, isStaff, useLevel } from '../lib/permissions'
+import { roleLabel, canView, homePath as homeFor, isStaff, useLevel } from '../lib/permissions'
 import { exportDenied, moduleForPath } from '../lib/accessModel'
 import { setExportGuard } from '../lib/exporters'
 import { ThemeToggle } from './ThemeToggle'
@@ -330,7 +330,7 @@ export default function Layout() {
                         {user.name.split(' ').slice(0, 2).join(' ')}
                       </span>
                       <span className="text-[11px] font-semibold leading-tight text-primary">
-                        {user.role === 'teacher' ? user.subject || 'Docente' : ROLE_LABEL[user.role]}
+                        {user.role === 'teacher' ? user.subject || 'Docente' : roleLabel(user.role)}
                       </span>
                     </div>
                     <ChevronDown className="hidden size-4 text-muted-foreground sm:block" />
@@ -353,7 +353,7 @@ export default function Layout() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem className="cursor-pointer gap-2" disabled>
                     <Shield className="size-4 text-primary" />
-                    <span>Rol: {ROLE_LABEL[user.role] || 'Docente'}</span>
+                    <span>Rol: {roleLabel(user.role)}</span>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={logout} className="cursor-pointer gap-2 text-destructive focus:text-destructive">
@@ -596,7 +596,7 @@ function Sidebar({ items, user, onLogout, collapsed, onToggle }) {
                 <Avatar name={user.name} image={user.profilePhoto} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold text-white">{user.name}</p>
-                  <p className="truncate text-[11px] text-slate-400">{ROLE_LABEL[user.role] || 'Docente'}</p>
+                  <p className="truncate text-[11px] text-slate-400">{roleLabel(user.role)}</p>
                 </div>
                 <ChevronDown className="size-4 text-slate-400" />
               </button>

@@ -30,7 +30,7 @@ import {
 } from 'lucide-react'
 import { api, upload } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
-import { ROLE_LABEL } from '../../lib/permissions'
+import { roleLabel } from '../../lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -215,7 +215,7 @@ export function EquipmentForm({ row, categories, places, users, onClose, onSaved
 
   function chooseResponsible(id) {
     const person = users.find((item) => String(item.id) === String(id))
-    const role = person ? (person.role === 'teacher' ? `Docente${person.subject ? ` – ${person.subject}` : ''}` : ROLE_LABEL[person.role] || '') : ''
+    const role = person ? (person.role === 'teacher' ? `Docente${person.subject ? ` – ${person.subject}` : ''}` : roleLabel(person.role)) : ''
     set({ responsibleId: id, responsibleRole: form.responsibleRole && form.responsibleId ? form.responsibleRole : role })
   }
 

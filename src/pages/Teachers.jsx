@@ -8,10 +8,11 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, PageHeader } from '../components/ui'
 import { Pill, Table } from './campus/kit'
-import { ROLE_LABEL, useCan } from '../lib/permissions'
+import { roleLabel, useCan } from '../lib/permissions'
 import { api } from '../lib/api'
 import { MODULES, accessOf, primaryRole, roleSetDefaults, rolesOf, sameActions } from '../lib/accessModel'
 import PermissionGrid from '../components/PermissionGrid'
+import RolesManager, { BUILTIN_ROLES } from './Roles'
 
 const emptyUser = { name: '', email: '', dni: '', gender: '', phone: '', role: 'auxiliar', roles: ['auxiliar'] }
 /** Form state for a new set of roles: main role and the permissions those roles give together. */
@@ -34,16 +35,13 @@ function ContactFields({ value, onChange }) {
   )
 }
 
-const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Coordinación CIST', text: 'Acceso completo: registra, edita, aprueba y elimina en todo el sistema.' },
-  { value: 'director', label: 'Directora', text: 'Ve todo el panel y exporta reportes, en modo solo consulta.' },
-  { value: 'auxiliar', label: 'Auxiliar', text: 'Solo el módulo de asistencia: escanear QR, registro manual y estudiantes.' },
-  { value: 'psicologo', label: 'Psicología', text: 'Solo el módulo de atención psicológica: casos, sesiones y citas (información confidencial).' },
-]
-const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, psicologo: 3, teacher: 4 }
+const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, psicologo: 3, teacher: 5 }
 
 /** Role checkboxes: one account can have several roles (e.g. Auxiliar and Psicología); at least one is required. */
 function RolePicker({ value = [], onChange, disabled, teacher }) {
+  const { customRoles } = useApp()
+  // Built-in roles plus the ones created in «Roles».
+  const ROLE_OPTIONS = [...BUILTIN_ROLES, ...customRoles.map((role) => ({ value: role.key, label: role.label, text: role.description || 'Rol creado con permisos propios.' }))]
   // Teachers always keep «Docente» and may get extra staff roles (not Coordinación).
   const options = teacher
     ? [{ value: 'teacher', label: 'Docente', text: 'Panel docente: solicitudes y calendario de reservas. Siempre activo para esta cuenta.', locked: true }, ...ROLE_OPTIONS.filter((option) => option.value !== 'admin')]
@@ -108,7 +106,8 @@ function UserFormSection({ icon, title, description, children }) {
 }
 
 export default function Teachers() {
-  const { user: currentUser, users, requests, addUser, updateTeacher, setTeacherActive, deleteTeacher, toast } = useApp()
+  const { user: currentUser, users, requests, customRoles, addUser, updateTeacher, setTeacherActive, deleteTeacher, toast } = useApp()
+  const [rolesOpen, setRolesOpen] = useState(false)
   const canEdit = useCan()
   const [query, setQuery] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
@@ -137,7 +136,7 @@ export default function Teachers() {
   const list = users
     .filter((user) => !roleFilter || rolesOf(user).includes(roleFilter))
     .filter((user) => `${user.name} ${user.email} ${user.subject}`.toLowerCase().includes(query.trim().toLowerCase()))
-    .sort((a, b) => (ROLE_ORDER[a.role] ?? 9) - (ROLE_ORDER[b.role] ?? 9) || a.name.localeCompare(b.name, 'es'))
+    .sort((a, b) => (ROLE_ORDER[a.role] ?? 4) - (ROLE_ORDER[b.role] ?? 4) || a.name.localeCompare(b.name, 'es'))
 
   async function createUser(event) {
     event.preventDefault()
@@ -150,7 +149,7 @@ export default function Teachers() {
       return
     }
     if (!(await savePermissions(result.user.id, newUser.roles, newUser.perms))) return
-    toast(`${result.user.name} fue registrado como ${newUser.roles.map((item) => ROLE_LABEL[item]).join(' + ')}.`)
+    toast(`${result.user.name} fue registrado como ${newUser.roles.map((item) => roleLabel(item)).join(' + ')}.`)
     setNewUser(emptyUser)
     setCreateOpen(false)
   }
@@ -200,6 +199,12 @@ export default function Teachers() {
         text="Administra las cuentas de Coordinación, Dirección y Auxiliares, y revisa los docentes habilitados para reservar salas."
         action={canEdit && (
           <div className="flex flex-wrap items-center gap-2">
+            {canAssign && (
+              <Button size="sm" variant="outline" className="gap-2 font-bold" onClick={() => setRolesOpen(true)}>
+                <ShieldCheck className="size-4" />
+                Roles
+              </Button>
+            )}
             <Button size="sm" className="gap-2 font-bold" onClick={() => { setNewUser(withRoles(emptyUser, emptyUser.roles)); setError(''); setCreateOpen(true) }}>
               <UserPlus className="size-4" />
               Nuevo usuario
@@ -207,6 +212,8 @@ export default function Teachers() {
           </div>
         )}
       />
+
+      {canAssign && <RolesManager open={rolesOpen} onOpenChange={setRolesOpen} />}
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl lg:max-w-5xl">
@@ -257,10 +264,10 @@ export default function Teachers() {
           <Input className="pl-9" value={query} placeholder="Buscar por nombre, correo o área..." onChange={(event) => setQuery(event.target.value)} />
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {[['', 'Todos'], ['admin', 'Coordinación'], ['director', 'Dirección'], ['auxiliar', 'Auxiliares'], ['psicologo', 'Psicología'], ['teacher', 'Docentes']].map(([value, label]) => {
+          {[['', 'Todos'], ['admin', 'Coordinación'], ['director', 'Dirección'], ['auxiliar', 'Auxiliares'], ['psicologo', 'Psicología'], ...customRoles.map((role) => [role.key, role.label]), ['teacher', 'Docentes']].map(([value, label]) => {
             const total = value ? users.filter((item) => rolesOf(item).includes(value)).length : users.length
             return (
-              <button key={label} type="button" onClick={() => setRoleFilter(value)} aria-pressed={roleFilter === value}
+              <button key={value || 'all'} type="button" onClick={() => setRoleFilter(value)} aria-pressed={roleFilter === value}
                 className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${roleFilter === value ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-muted'}`}>
                 {label} ({total})
               </button>
@@ -295,7 +302,7 @@ export default function Teachers() {
               { key: 'phone', label: 'Teléfono', render: (user) => <span className="whitespace-nowrap">{user.phone || '—'}</span> },
               { key: 'role', label: 'Rol', render: (user) => (
                 <span className="flex flex-wrap gap-1.5">
-                  {rolesOf(user).map((role) => <Pill key={role} value={ROLE_LABEL[role] || 'Docente'} />)}
+                  {rolesOf(user).map((role) => <Pill key={role} value={roleLabel(role)} />)}
                   {user.permissions && <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold text-primary"><KeyRound className="size-3" /> Permisos personalizados</span>}
                   {!user.active && <Pill value="Inactivo" />}
                 </span>

@@ -110,9 +110,28 @@ export function setRolePermissions(map) {
 }
 export const rolePermissions = () => roleCustom
 
+// Roles created by the administrator in «Roles» (stored in the database): [{ key, label, description, permissions }].
+let customRoles = []
+/** Key pattern of the roles created in the panel (built-in roles never match it). */
+export const CUSTOM_ROLE_KEY = /^r_[a-z0-9]{4,16}$/
+
+/** Loads the roles created in the panel. Called by the API at start-up and by the app on bootstrap. */
+export function setCustomRoles(list) {
+  customRoles = (Array.isArray(list) ? list : [])
+    .filter((role) => role && CUSTOM_ROLE_KEY.test(role.key))
+    .map((role) => ({ key: role.key, label: String(role.label || role.key), description: String(role.description || ''), permissions: { ...all('none'), ...(parsePermissions(role.permissions) || {}) } }))
+  return customRoles
+}
+export const customRoleList = () => customRoles
+export const isCustomRole = (role) => customRoles.some((item) => item.key === role)
+/** Roles that can be assigned to a staff account (Coordinación is handled apart). */
+export const isAssignableRole = (role) => EDITABLE_ROLES.includes(role) || isCustomRole(role)
+
 /** Actions a role gives (built-in defaults plus what was edited for the role). */
 export function roleDefaults(role) {
   if (role === 'admin') return all('edit')
+  const custom = customRoles.find((item) => item.key === role)
+  if (custom) return custom.permissions
   if (!ROLE_DEFAULTS[role]) return all('none')
   return { ...ROLE_DEFAULTS[role], ...(roleCustom[role] || {}) }
 }
@@ -127,7 +146,7 @@ export function parseRoles(value) {
   if (typeof value === 'string') {
     try { list = JSON.parse(value) } catch { return [] }
   }
-  return Array.isArray(list) ? [...new Set(list.filter((role) => EDITABLE_ROLES.includes(role)))] : []
+  return Array.isArray(list) ? [...new Set(list.filter((role) => isAssignableRole(role)))] : []
 }
 
 /** Every role of a user: the main one plus the additional ones. */

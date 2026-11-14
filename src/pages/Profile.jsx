@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { BadgeCheck, Camera, CheckCircle2, Clock, IdCard, Info, Mail, Save, ShieldCheck, UserRound, XCircle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SCHOOL } from '../lib/school'
-import { ROLE_LABEL, isStaff } from '../lib/permissions'
+import { isStaff, roleLabel } from '../lib/permissions'
 import { Avatar } from '../components/ui'
 import { Button } from '@/components/ui/button'
 import { Field } from '@/components/ui/field'
@@ -70,7 +70,7 @@ export default function ProfilePage() {
             <h2 className="mt-3 text-lg font-extrabold text-foreground">{user.name}</h2>
             <p className="text-sm text-muted-foreground">{user.email}</p>
             <div className="mt-2 flex flex-wrap justify-center gap-2">
-              <Pill value={ROLE_LABEL[user.role] || 'Docente'} />
+              <Pill value={roleLabel(user.role)} />
               {!admin && user.subject && <span className="inline-flex items-center rounded-full border border-border px-2.5 py-0.5 text-xs font-semibold text-foreground">{user.subject}</span>}
             </div>
             {photoLoading && <p className="mt-2 text-xs text-muted-foreground">Subiendo foto…</p>}

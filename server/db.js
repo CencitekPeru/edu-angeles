@@ -48,7 +48,7 @@ export async function initDb() {
       dni VARCHAR(8) NULL,
       profile_photo VARCHAR(255) NULL,
       password_hash VARCHAR(255) NOT NULL,
-      role ENUM('admin', 'teacher', 'director', 'auxiliar', 'psicologo') NOT NULL,
+      role VARCHAR(20) NOT NULL,
       subject VARCHAR(120) NOT NULL,
       active TINYINT(1) NOT NULL DEFAULT 1,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -56,8 +56,9 @@ export async function initDb() {
   `)
 
   const [roleColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'role'")
-  if (roleColumn[0] && !String(roleColumn[0].Type).includes('psicologo')) {
-    await pool.query("ALTER TABLE users MODIFY role ENUM('admin', 'teacher', 'director', 'auxiliar', 'psicologo') NOT NULL")
+  // The role is free text so the roles created in «Roles» (keys like 'r_ab12cd34') can be stored too.
+  if (roleColumn[0] && String(roleColumn[0].Type).toLowerCase().startsWith('enum')) {
+    await pool.query('ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL')
   }
   // Extended teacher profile (Docentes view).
   for (const [name, type] of [
@@ -76,6 +77,9 @@ export async function initDb() {
     const [existing] = await pool.query('SHOW COLUMNS FROM users LIKE ?', [name])
     if (!existing.length) await pool.query(`ALTER TABLE users ADD COLUMN ${name} ${type}`)
   }
+  // Room for several created roles in the additional roles list.
+  const [extraColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'extra_roles'")
+  if (/varchar\(120\)/i.test(String(extraColumn[0]?.Type))) await pool.query('ALTER TABLE users MODIFY extra_roles VARCHAR(500) NULL')
   const [dniColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'dni'")
   if (!dniColumn.length) await pool.query('ALTER TABLE users ADD COLUMN dni VARCHAR(8) NULL AFTER email')
   const [profilePhotoColumn] = await pool.query("SHOW COLUMNS FROM users LIKE 'profile_photo'")

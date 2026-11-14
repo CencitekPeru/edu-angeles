@@ -15,7 +15,7 @@ import { activitiesRouter, ensureActivities } from './activities.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
-import { EDITABLE_ROLES, ROLE_DEFAULTS, parseRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
+import { EDITABLE_ROLES, ROLE_DEFAULTS, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
 
 /** Role permissions edited in «Roles y permisos»: only the levels that differ from the built-in defaults are stored. */
 async function ensureRoles() {
@@ -27,6 +27,21 @@ async function ensureRoles() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
   const [rows] = await pool.query('SELECT role, permissions FROM role_permissions')
   setRolePermissions(Object.fromEntries(rows.map((row) => [row.role, row.permissions])))
+  // Roles created by Coordinación in «Roles», with their own module permissions.
+  await pool.query(`CREATE TABLE IF NOT EXISTS custom_roles (
+    role_key VARCHAR(20) PRIMARY KEY,
+    label VARCHAR(60) NOT NULL,
+    description VARCHAR(255) NOT NULL DEFAULT '',
+    permissions TEXT NOT NULL,
+    updated_by INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  await loadCustomRoles()
+}
+
+async function loadCustomRoles() {
+  const [rows] = await pool.query('SELECT role_key, label, description, permissions FROM custom_roles ORDER BY label')
+  return setCustomRoles(rows.map((row) => ({ key: row.role_key, label: row.label, description: row.description, permissions: row.permissions })))
 }
 
 const app = express()
@@ -134,6 +149,7 @@ app.get('/api/bootstrap', requireAuth, wrap(async (req, res) => {
     ok: true,
     users: users[0].map(mapUser),
     rolePermissions: rolePermissions(),
+    customRoles: customRoleList(),
     requests,
     notifications: notifications[0].map(mapNotification),
   })
@@ -357,6 +373,8 @@ function profileInput(body) {
 const ROLES = ['admin', 'teacher', 'director', 'auxiliar', 'psicologo']
 const STAFF = ['admin', 'director', 'auxiliar', 'psicologo']
 const ROLE_SUBJECT = { admin: 'Coordinación académica', director: 'Dirección', auxiliar: 'Auxiliar de educación', psicologo: 'Psicología' }
+/** Text shown under a staff member's name: the built-in description, or the name of a created role. */
+const roleSubject = (role) => ROLE_SUBJECT[role] || customRoleList().find((item) => item.key === role)?.label || 'Personal'
 
 app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   const profile = profileInput(req.body)
@@ -364,9 +382,9 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase()
   const dni = String(req.body.dni || '').trim()
   const role = String(req.body.role || 'teacher')
-  if (!ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+  if (!ROLES.includes(role) && !isCustomRole(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
   if (role === 'admin' && req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede crear cuentas de coordinación.' })
-  const subject = role === 'teacher' ? String(req.body.subject || '').trim() : ROLE_SUBJECT[role]
+  const subject = role === 'teacher' ? String(req.body.subject || '').trim() : roleSubject(role)
   if (name.length < 5) return res.status(400).json({ ok: false, error: 'Escribe nombre y apellido.' })
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ ok: false, error: 'El correo no es válido.' })
   if (role === 'teacher' && subject.length < 3) return res.status(400).json({ ok: false, error: 'Indica el área o asignatura.' })
@@ -408,7 +426,7 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
   let role = target.role
   if (target.role !== 'teacher' && req.body.role) {
     role = String(req.body.role)
-    if (!STAFF.includes(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
+    if (!STAFF.includes(role) && !isCustomRole(role)) return res.status(400).json({ ok: false, error: 'El rol seleccionado no es válido.' })
     if ((role === 'admin' || target.role === 'admin') && role !== target.role && req.user.role !== 'admin') {
       return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede otorgar o quitar el rol de coordinación.' })
     }
@@ -429,7 +447,7 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
        first_names = IF(?, ?, first_names), last_names = IF(?, ?, last_names), birth_date = IF(?, ?, birth_date),
        gender = IF(?, ?, gender), phone = IF(?, ?, phone), employment_condition = IF(?, ?, employment_condition), notes = IF(?, ?, notes)
      WHERE id = ?`,
-    [name, email, role === 'teacher' ? subject : ROLE_SUBJECT[role], dni, role,
+    [name, email, role === 'teacher' ? subject : roleSubject(role), dni, role,
       profile.provided, profile.firstNames, profile.provided, profile.lastNames,
       profile.has.birthDate, profile.birthDate, profile.has.gender, profile.gender, profile.has.phone, profile.phone,
       profile.has.employmentCondition, profile.employmentCondition, profile.has.notes, profile.notes,
@@ -477,6 +495,56 @@ app.put('/api/roles/:role/permissions', requireAuth, wrap(async (req, res) => {
   }
   setRolePermissions({ ...rolePermissions(), [role]: Object.keys(changed).length ? changed : null })
   res.json({ ok: true, rolePermissions: rolePermissions() })
+}))
+
+/** Name and description of a created role, validated; `key` is the role being edited (so it can keep its own name). */
+function customRoleInput(body, key) {
+  const label = String(body.label || '').trim().replace(/\s+/g, ' ').slice(0, 60)
+  const description = String(body.description || '').trim().slice(0, 255)
+  if (label.length < 3) return { error: 'Escribe un nombre para el rol (mínimo 3 caracteres).' }
+  const taken = [...Object.values(BUILTIN_ROLE_LABELS), ...customRoleList().filter((item) => item.key !== key).map((item) => item.label)]
+  if (taken.some((item) => item.toLowerCase() === label.toLowerCase())) return { error: 'Ya existe un rol con ese nombre.' }
+  const permissions = parsePermissions(body.permissions) || {}
+  return { label, description, permissions: JSON.stringify(permissions) }
+}
+const BUILTIN_ROLE_LABELS = { admin: 'Coordinación CIST', director: 'Directora', auxiliar: 'Auxiliar', psicologo: 'Psicología', teacher: 'Docente' }
+
+/** Creates a role with its own permissions. Only Coordinación CIST. */
+app.post('/api/roles', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede crear roles.' })
+  const input = customRoleInput(req.body)
+  if (input.error) return res.status(400).json({ ok: false, error: input.error })
+  const key = `r_${randomBytes(4).toString('hex')}`
+  await pool.query('INSERT INTO custom_roles (role_key, label, description, permissions, updated_by) VALUES (?, ?, ?, ?, ?)',
+    [key, input.label, input.description, input.permissions, req.user.id])
+  const customRoles = await loadCustomRoles()
+  res.status(201).json({ ok: true, role: customRoles.find((item) => item.key === key), customRoles })
+}))
+
+/** Renames a created role or changes its permissions. */
+app.put('/api/roles/:key', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede modificar roles.' })
+  const { key } = req.params
+  if (!isCustomRole(key)) return res.status(404).json({ ok: false, error: 'El rol no existe o no se puede modificar.' })
+  const input = customRoleInput(req.body, key)
+  if (input.error) return res.status(400).json({ ok: false, error: input.error })
+  await pool.query('UPDATE custom_roles SET label = ?, description = ?, permissions = ?, updated_by = ? WHERE role_key = ?',
+    [input.label, input.description, input.permissions, req.user.id, key])
+  // Staff whose main role is this one show its name under theirs.
+  await pool.query('UPDATE users SET subject = ? WHERE role = ?', [input.label, key])
+  res.json({ ok: true, customRoles: await loadCustomRoles() })
+}))
+
+/** Deletes a created role, only when no account uses it. */
+app.delete('/api/roles/:key', requireAuth, wrap(async (req, res) => {
+  if (req.user.role !== 'admin') return res.status(403).json({ ok: false, error: 'Solo Coordinación CIST puede eliminar roles.' })
+  const { key } = req.params
+  if (!isCustomRole(key)) return res.status(404).json({ ok: false, error: 'El rol no existe o no se puede eliminar.' })
+  const [used] = await pool.query('SELECT COUNT(*) AS total FROM users WHERE role = ? OR extra_roles LIKE ?', [key, `%"${key}"%`])
+  const total = Number(used[0].total)
+  if (total) return res.status(409).json({ ok: false, error: `No se puede eliminar: ${total === 1 ? '1 usuario tiene' : `${total} usuarios tienen`} este rol. Quítaselo primero.` })
+  await pool.query('DELETE FROM custom_roles WHERE role_key = ?', [key])
+  res.json({ ok: true, customRoles: await loadCustomRoles() })
 }))
 
 app.post('/api/users/:id/active', requireAuth, requireAdmin, wrap(async (req, res) => {
