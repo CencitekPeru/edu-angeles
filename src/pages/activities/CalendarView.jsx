@@ -171,7 +171,7 @@ function ActivityRow({ item, onOpen, onEdit, onDelete, canEdit }) {
         <button type="button" onClick={() => onOpen(item.id)} className={cn('block text-left text-sm font-bold text-foreground hover:underline', inactive(item) && 'line-through')}>
           {item.title}
         </button>
-        {item.commissionName && <p className="flex items-center gap-1.5"><Users className="size-3.5 shrink-0" /> {item.commissionName}</p>}
+        {item.commissionName && <p className="flex items-center gap-1.5"><Users className="size-3.5 shrink-0" /> {item.commissionName}{item.subcommission ? ` · ${item.subcommission}` : ''}</p>}
         {leads.length > 0 && <p className="flex items-start gap-1.5"><User className="mt-px size-3.5 shrink-0" /> <span>{support.length ? 'Resp. principal' : 'Resp.'}: {leads.join(' / ')}</span></p>}
         {support.length > 0 && <p className="flex items-start gap-1.5"><UsersRound className="mt-px size-3.5 shrink-0" /> <span>Apoyo: {support.join(', ')}</span></p>}
         {(item.endDate !== item.startDate || inactive(item)) && <p className="text-[11px]">{item.endDate !== item.startDate ? `Hasta el ${Number(item.endDate.slice(8))}/${item.endDate.slice(5, 7)} · ` : ''}{inactive(item) ? item.status : ''}</p>}

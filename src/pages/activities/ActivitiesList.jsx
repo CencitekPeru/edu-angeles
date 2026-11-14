@@ -72,6 +72,7 @@ function DetailPanel({ item, onOpen }) {
         <DetailRow icon={CalendarDays} label="Fecha">{longDate(item)}</DetailRow>
         <DetailRow icon={Clock} label="Horario">{hoursLabel(item)}</DetailRow>
         <DetailRow icon={Layers} label="Comité">{item.commissionName}</DetailRow>
+        {item.subcommission && <DetailRow icon={Layers} label="Subcomisión">{item.subcommission}</DetailRow>}
         <DetailRow icon={Tag} label="Tipo">{item.type}</DetailRow>
         <DetailRow icon={Users} label="Nivel">{LEVEL_VIEW[item.level]?.long || item.level}</DetailRow>
       </div>

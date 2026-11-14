@@ -2,6 +2,7 @@ import express from 'express'
 import { getPool } from './db.js'
 import { requireAdmin, requireAuth } from './campus.js'
 import { nowLima } from './attendance.js'
+import { COMMITTEES } from '../src/lib/committees.js'
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
@@ -77,6 +78,7 @@ function mapActivity(row) {
     audience: row.audience || '',
     commissionId: row.commission_id,
     commissionName: row.commission_name || '',
+    subcommission: row.subcommission || '',
     commissionCoordinator: row.commission_coordinator || '',
     responsible: row.responsible || '',
     staff: parseStaff(row.staff),
@@ -109,6 +111,7 @@ function activityInput(body) {
     level,
     audience: text(body.audience, 160),
     commissionId: Number(body.commissionId) || null,
+    subcommission: text(body.subcommission, 200),
     responsible: leads.length ? text(leads.join(' / '), 160) : text(body.responsible, 160),
     status: oneOf(ACTIVITY_STATUS, body.status, 'Planificada'),
     budget: money(body.budget),
@@ -259,10 +262,10 @@ export function activitiesRouter() {
     const db = getPool()
     const code = await nextCode(db)
     const [created] = await db.query(
-      `INSERT INTO activities (code, title, type, description, objective, start_date, end_date, start_time, end_time, place, level, audience, commission_id, responsible, staff, status, budget, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO activities (code, title, type, description, objective, start_date, end_date, start_time, end_time, place, level, audience, commission_id, subcommission, responsible, staff, status, budget, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [code, input.title, input.type, input.description, input.objective, input.startDate, input.endDate || null, input.startTime || null, input.endTime || null,
-        input.place, input.level, input.audience, input.commissionId, input.responsible, JSON.stringify(input.staff), input.status, input.budget, req.user.id],
+        input.place, input.level, input.audience, input.commissionId, input.subcommission, input.responsible, JSON.stringify(input.staff), input.status, input.budget, req.user.id],
     )
     res.status(201).json({ ok: true, id: created.insertId, code })
   }))
@@ -273,9 +276,9 @@ export function activitiesRouter() {
     if (error) return bad(res, error)
     const [result] = await getPool().query(
       `UPDATE activities SET title = ?, type = ?, description = ?, objective = ?, start_date = ?, end_date = ?, start_time = ?, end_time = ?, place = ?, level = ?,
-         audience = ?, commission_id = ?, responsible = ?, staff = IF(?, ?, staff), status = ?, budget = ? WHERE id = ?`,
+         audience = ?, commission_id = ?, subcommission = ?, responsible = ?, staff = IF(?, ?, staff), status = ?, budget = ? WHERE id = ?`,
       [input.title, input.type, input.description, input.objective, input.startDate, input.endDate || null, input.startTime || null, input.endTime || null, input.place,
-        input.level, input.audience, input.commissionId, input.responsible, input.hasStaff, JSON.stringify(input.staff), input.status, input.budget, req.params.id],
+        input.level, input.audience, input.commissionId, input.subcommission, input.responsible, input.hasStaff, JSON.stringify(input.staff), input.status, input.budget, req.params.id],
     )
     if (!result.affectedRows) return bad(res, 'La actividad ya no existe.', 404)
     res.json({ ok: true })
@@ -502,6 +505,10 @@ export async function ensureActivities() {
     active TINYINT(1) NOT NULL DEFAULT 1,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+  // The three committees always exist and stay active.
+  for (const name of COMMITTEES) {
+    await db.query('INSERT INTO commissions (name, active) VALUES (?, 1) ON DUPLICATE KEY UPDATE active = 1', [name])
+  }
   await db.query(`CREATE TABLE IF NOT EXISTS activities (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,
@@ -527,6 +534,8 @@ export async function ensureActivities() {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
   const [staffColumn] = await db.query("SHOW COLUMNS FROM activities LIKE 'staff'")
   if (!staffColumn.length) await db.query('ALTER TABLE activities ADD COLUMN staff TEXT NULL AFTER responsible')
+  const [subColumn] = await db.query("SHOW COLUMNS FROM activities LIKE 'subcommission'")
+  if (!subColumn.length) await db.query("ALTER TABLE activities ADD COLUMN subcommission VARCHAR(200) NOT NULL DEFAULT '' AFTER commission_id")
   await db.query(`CREATE TABLE IF NOT EXISTS activity_tasks (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     activity_id INT UNSIGNED NOT NULL,

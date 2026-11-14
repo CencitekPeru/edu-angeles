@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { Pill } from '../campus/kit'
 import { Select, todayLima } from '../attendance/shared'
+import { committeeRank, subcommissionsOf } from '../../lib/committees'
 
 /* ------------------------------------------------------------- catalogs */
 
@@ -120,7 +121,7 @@ function FormDialog({ title, description, icon: Icon, formId, saving, onClose, s
 
 const emptyActivity = (date) => ({
   title: '', type: '', level: 'Institucional', audience: '', startDate: date || todayLima(), endDate: '', startTime: '', endTime: '', place: '',
-  commissionId: '', responsible: '', objective: '', description: '', budget: '', status: 'Planificada', staff: {},
+  commissionId: '', subcommission: '', responsible: '', objective: '', description: '', budget: '', status: 'Planificada', staff: {},
 })
 
 const LEVEL_SCOPE = [
@@ -210,15 +211,18 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
   const [saving, run, toast] = useSave(onSaved)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
   const levels = staffLevels(form.level)
+  const committeeName = commissions.find((item) => String(item.id) === form.commissionId)?.name || ''
+  const subcommissions = subcommissionsOf(committeeName)
   const teachers = (users || []).filter((user) => user.role === 'teacher' && user.active).map((user) => user.name).sort((a, b) => a.localeCompare(b, 'es'))
 
   function save(event) {
     event.preventDefault()
     if (!form.commissionId) return toast('Selecciona el comité de gestión.', 'bad')
+    if (subcommissions.length && !form.subcommission) return toast('Selecciona la subcomisión.', 'bad')
     const missing = levels.find((level) => !form.staff[level]?.lead)
     if (missing) return toast(`Selecciona el responsable principal del nivel ${missing}.`, 'bad')
     if (form.startTime && form.endTime && !form.endDate && form.endTime <= form.startTime) return toast('La hora de fin debe ser posterior a la de inicio.', 'bad')
-    const body = { ...form, staff: Object.fromEntries(levels.map((level) => [level, form.staff[level]])) }
+    const body = { ...form, subcommission: subcommissions.length ? form.subcommission : '', staff: Object.fromEntries(levels.map((level) => [level, form.staff[level]])) }
     return run(
       () => (editing ? api(`/api/activities/${activity.id}`, { method: 'PATCH', body }) : api('/api/activities', { method: 'POST', body })),
       (result) => (editing ? 'Actividad actualizada.' : `Actividad ${result.code} registrada.`),
@@ -249,13 +253,25 @@ export function ActivityForm({ activity, date, onClose, onSaved }) {
             <Field label="Hora de fin" className="sm:col-span-2"><Input type="time" value={form.endTime} onChange={(event) => set({ endTime: event.target.value })} /></Field>
             <Field label="Comité de gestión" required className="sm:col-span-4">
               <WithIcon icon={Layers}>
-                <Select className="pl-8" value={form.commissionId} required onChange={(commissionId) => set({ commissionId })}
-                  options={[{ value: '', label: 'Seleccione un comité' }, ...commissions.filter((item) => item.active || String(item.id) === form.commissionId).map((item) => ({ value: String(item.id), label: item.name }))]} />
+                <Select className="pl-8" value={form.commissionId} required onChange={(commissionId) => set({ commissionId, subcommission: '' })}
+                  options={[{ value: '', label: 'Seleccione un comité' }, ...commissions
+                    // Only the three committees (an older one stays visible while editing an activity that already uses it).
+                    .filter((item) => committeeRank(item.name) >= 0 || String(item.id) === form.commissionId)
+                    .sort((a, b) => (committeeRank(a.name) + 99) % 99 - (committeeRank(b.name) + 99) % 99)
+                    .map((item) => ({ value: String(item.id), label: item.name }))]} />
               </WithIcon>
             </Field>
             <Field label="Tipo de actividad" required className="sm:col-span-2">
               <WithIcon icon={Flag}><Select className="pl-8" value={form.type} onChange={(type) => set({ type })} options={opts(ACTIVITY_TYPES, 'Seleccione')} required /></WithIcon>
             </Field>
+            {subcommissions.length > 0 && (
+              <Field label="Subcomisión" required className="sm:col-span-6">
+                <WithIcon icon={ListChecks}>
+                  <Select className="pl-8" value={form.subcommission} required onChange={(subcommission) => set({ subcommission })}
+                    options={[{ value: '', label: `Seleccione una subcomisión (${subcommissions.length})` }, ...[...new Set([...subcommissions, form.subcommission].filter(Boolean))].map((name) => ({ value: name, label: name }))]} />
+                </WithIcon>
+              </Field>
+            )}
             <fieldset className="sm:col-span-6">
               <legend className="mb-1.5 text-xs font-semibold">Nivel / Alcance<span className="text-destructive"> *</span></legend>
               <div className="flex flex-wrap items-center gap-2">
@@ -476,7 +492,8 @@ export function ActivityDetail({ id, onClose, onChanged, initialTab = 'info' }) 
                 <Info label="Fecha">{dateLabel(item)}</Info>
                 <Info label="Horario">{timeLabel(item)}</Info>
                 <Info label="Lugar">{item.place}</Info>
-                <Info label="Comisión">{item.commissionName ? `${item.commissionName}${item.commissionCoordinator ? ` (coord. ${item.commissionCoordinator})` : ''}` : ''}</Info>
+                <Info label="Comité de gestión">{item.commissionName}</Info>
+                {item.subcommission && <Info label="Subcomisión">{item.subcommission}</Info>}
                 <Info label="Responsable directo">{item.responsible}</Info>
                 {staffLevels(item.level).filter((level) => item.staff?.[level]).map((level) => (
                   <Info key={level} label={`Responsables · ${level}`}>{[item.staff[level].lead, ...item.staff[level].support.map((name) => `${name} (apoyo)`)].filter(Boolean).join(', ')}</Info>
