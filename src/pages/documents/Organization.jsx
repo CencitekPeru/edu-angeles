@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarDays, CalendarRange, ClipboardList, Eraser, FileSpreadsheet, Layers, Network, Paperclip, Pencil, Plus, Save, Search, Trash2, UserRound, Users, X } from 'lucide-react'
+import { CalendarDays, CalendarRange, CheckCircle2, ClipboardList, Eraser, FileSpreadsheet, FileText, Layers, Network, Paperclip, Pencil, Plus, Save, Search, Trash2, UserRound, Users, X } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
 import { canSee } from '../../lib/accessModel'
@@ -19,6 +19,30 @@ import {
 
 const fileUrl = (item) => `/api/docs/organizations/${item.id}/file`
 const emptyMember = { name: '', position: '', condition: '', level: '' }
+
+/** Input or select with an icon inside, as in «Nueva Actividad». */
+function WithIcon({ icon: Icon, children }) {
+  return (
+    <span className="relative block">
+      <Icon className="pointer-events-none absolute top-1/2 left-2.5 z-10 size-4 -translate-y-1/2 text-muted-foreground" />
+      {children}
+    </span>
+  )
+}
+
+/** Radio options shown as buttons (same as «Nivel / Alcance» of an activity). */
+function ChoiceGroup({ name, value, options, onChange }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {options.map((option) => (
+        <label key={option} className={`flex h-9 cursor-pointer items-center gap-2 rounded-md border px-3 text-sm transition-colors has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/40 ${value === option ? 'border-primary bg-primary/[0.07] font-semibold text-primary' : 'border-input bg-card hover:bg-muted/50'}`}>
+          <input type="radio" name={name} value={option} checked={value === option} onChange={() => onChange(option)} className="size-4 accent-primary" />
+          {option}
+        </label>
+      ))}
+    </div>
+  )
+}
 
 /** Committees in the official order first, then the rest alphabetically. */
 const committeeOrder = (name) => {
@@ -304,51 +328,85 @@ function OrganizationForm({ item, onClose, onSaved }) {
         <StaffNames id="org-staff" />
         <datalist id="org-committees">{COMMITTEES.map((value) => <option key={value} value={value} />)}</datalist>
         <datalist id="org-commissions">{subcommissionsOf(form.committee).map((value) => <option key={value} value={value} />)}</datalist>
-        <form id="organization-form" className="grid gap-3" onSubmit={save}>
-          <Section number={1} icon={ClipboardList} title="Información de la organización" className="sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="Comité de gestión" required className="sm:col-span-2"><Input list="org-committees" value={form.committee} onChange={(event) => set({ committee: event.target.value })} maxLength={160} placeholder="Selecciona o escribe el comité" required /></Field>
-            <Field label="Comisión de trabajo" required className="sm:col-span-2"><Input list="org-commissions" value={form.commission} onChange={(event) => set({ commission: event.target.value })} maxLength={200} placeholder="Selecciona o escribe la comisión" required /></Field>
-            <Field label="Finalidad / Objetivo" required className="sm:col-span-2 lg:col-span-4"><CountedText rows={2} max={300} value={form.objective} onChange={(objective) => set({ objective })} placeholder="Finalidad de la comisión durante el año escolar…" required /></Field>
-            <Field label="Estado" required><Select value={form.status} onChange={(status) => set({ status })} options={opts(ORG_STATUS)} /></Field>
-            <Field label="Año escolar" required><Select value={form.year} onChange={(value) => set({ year: value })} options={opts(yearOptions())} /></Field>
-            <Field label="Nivel de aplicación (alcance)" required className="sm:col-span-2"><Select value={form.scope} onChange={(scope) => set({ scope })} options={opts(ORG_SCOPES)} /></Field>
-          </Section>
+        <form id="organization-form" className="grid items-start gap-3 lg:grid-cols-2" onSubmit={save}>
+          <div className="space-y-3">
+            <Section icon={ClipboardList} title="Información de la organización" className="sm:grid-cols-6">
+              <Field label="Comité de gestión" required className="sm:col-span-6">
+                <WithIcon icon={Network}><Input className="pl-8" list="org-committees" value={form.committee} onChange={(event) => set({ committee: event.target.value })} maxLength={160} placeholder="Selecciona o escribe el comité" required /></WithIcon>
+              </Field>
+              <Field label="Comisión de trabajo" required className="sm:col-span-6">
+                <WithIcon icon={Layers}><Input className="pl-8" list="org-commissions" value={form.commission} onChange={(event) => set({ commission: event.target.value })} maxLength={200} placeholder="Selecciona o escribe la comisión" required /></WithIcon>
+              </Field>
+              <Field label="Finalidad / Objetivo" required className="sm:col-span-6"><CountedText rows={2} max={300} value={form.objective} onChange={(objective) => set({ objective })} placeholder="Finalidad de la comisión durante el año escolar…" required /></Field>
+              <Field label="Estado" required className="sm:col-span-3">
+                <WithIcon icon={CheckCircle2}><Select className="pl-8" value={form.status} onChange={(status) => set({ status })} options={opts(ORG_STATUS)} /></WithIcon>
+              </Field>
+              <Field label="Año escolar" required className="sm:col-span-3">
+                <WithIcon icon={CalendarDays}><Select className="pl-8" value={form.year} onChange={(value) => set({ year: value })} options={opts(yearOptions())} /></WithIcon>
+              </Field>
+              <fieldset className="sm:col-span-6">
+                <legend className="mb-1.5 text-xs font-semibold">Nivel de aplicación (alcance)<span className="text-destructive"> *</span></legend>
+                <ChoiceGroup name="org-scope" value={form.scope} options={ORG_SCOPES} onChange={(scope) => set({ scope })} />
+              </fieldset>
+            </Section>
 
-          <Section number={2} icon={Users} title="Integrantes de la comisión">
-            <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,2.2fr)_repeat(3,minmax(0,1fr))_auto]">
-              <Field label="Docente / Trabajador" required className="sm:col-span-2 lg:col-span-1"><Input list="org-staff" value={member.name} onChange={(event) => setMember({ ...member, name: event.target.value })} maxLength={160} placeholder="Buscar por nombre…"
-                onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addMember() } }} /></Field>
+            <Section icon={Paperclip} title="Documento de conformación" className="sm:grid-cols-2">
+              <fieldset className="sm:col-span-2">
+                <legend className="mb-1.5 text-xs font-semibold">Tipo de documento<span className="text-destructive"> *</span></legend>
+                <ChoiceGroup name="org-doc-type" value={form.docType} options={CONFORMATION_TYPES} onChange={(docType) => set({ docType })} />
+              </fieldset>
+              <Field label="N.° de documento" required>
+                <WithIcon icon={FileText}><Input className="pl-8" value={form.docNumber} onChange={(event) => set({ docNumber: event.target.value })} maxLength={80} placeholder="R.D. N.° 045-2026-IE.LA" required /></WithIcon>
+              </Field>
+              <Field label="Fecha de emisión" required><Input type="date" value={form.docDate} onChange={(event) => set({ docDate: event.target.value })} required /></Field>
+              <div className="sm:col-span-2">
+                <PdfDrop file={file} current={stored} onFile={setFile} onView={() => files.view(fileUrl(item))} onRemove={() => { if (file) setFile(null); else setRemoveFile(true) }} />
+              </div>
+            </Section>
+
+            <Section icon={CalendarRange} title="Vigencia" className="sm:grid-cols-2">
+              <Field label="Inicio de vigencia" required><Input type="date" value={form.validFrom} onChange={(event) => set({ validFrom: event.target.value })} required /></Field>
+              <Field label="Fin de vigencia" required><Input type="date" value={form.validTo} min={form.validFrom} onChange={(event) => set({ validTo: event.target.value })} required /></Field>
+            </Section>
+          </div>
+
+          <Section icon={Users} title={`Integrantes de la comisión (${form.members.length})`}>
+            <div className="grid gap-3 rounded-lg border border-border bg-slate-50/60 p-3 sm:grid-cols-3 dark:bg-muted/20">
+              <Field label="Docente / Trabajador" required className="sm:col-span-3">
+                <WithIcon icon={UserRound}><Input className="pl-8" list="org-staff" value={member.name} onChange={(event) => setMember({ ...member, name: event.target.value })} maxLength={160} placeholder="Buscar por nombre…"
+                  onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); addMember() } }} /></WithIcon>
+              </Field>
               <Field label="Cargo" required><Select value={member.position} onChange={(position) => setMember({ ...member, position })} options={opts(MEMBER_POSITIONS, 'Seleccionar…')} /></Field>
               <Field label="Condición" required><Select value={member.condition} onChange={(condition) => setMember({ ...member, condition })} options={opts(MEMBER_CONDITIONS, 'Seleccionar…')} /></Field>
               <Field label="Nivel" required><Select value={member.level} onChange={(level) => setMember({ ...member, level })} options={opts(MEMBER_LEVELS, 'Seleccionar…')} /></Field>
-              <div className="flex gap-1">
-                <Button type="button" className="flex-1" onClick={addMember}>{memberIndex === null ? <><Plus /> Agregar</> : <><Save /> Actualizar</>}</Button>
-                {memberIndex !== null && <Button type="button" variant="ghost" size="icon" onClick={() => { setMember(emptyMember); setMemberIndex(null) }} aria-label="Cancelar edición del integrante"><X /></Button>}
+              <div className="flex justify-end gap-2 sm:col-span-3">
+                {memberIndex !== null && <Button type="button" variant="outline" size="sm" onClick={() => { setMember(emptyMember); setMemberIndex(null) }}><X /> Cancelar edición</Button>}
+                <Button type="button" variant="outline" size="sm" onClick={addMember}>{memberIndex === null ? <><Plus /> Agregar integrante</> : <><Save /> Actualizar integrante</>}</Button>
               </div>
             </div>
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[640px] text-sm">
+            <div className="overflow-hidden rounded-lg border border-border">
+              <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-xs text-foreground/75 dark:bg-muted/40">
                   <tr>
-                    <th className="w-12 px-3 py-2.5 text-center font-bold">N.°</th>
-                    <th className="px-3 py-2.5 text-left font-bold">Integrante (Docente / Trabajador)</th>
-                    <th className="w-32 px-3 py-2.5 text-left font-bold">Cargo</th>
-                    <th className="w-28 px-3 py-2.5 text-left font-bold">Condición</th>
-                    <th className="w-36 px-3 py-2.5 text-left font-bold">Nivel</th>
-                    <th className="w-24 px-3 py-2.5 text-center font-bold">Acciones</th>
+                    <th className="w-10 px-2 py-2 text-center font-bold">N.°</th>
+                    <th className="px-2 py-2 text-left font-bold">Integrante</th>
+                    <th className="px-2 py-2 text-left font-bold">Cargo</th>
+                    <th className="px-2 py-2 text-left font-bold">Condición</th>
+                    <th className="px-2 py-2 text-left font-bold">Nivel</th>
+                    <th className="w-20 px-2 py-2" aria-label="Acciones" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {form.members.length === 0 && <tr><td colSpan={6} className="px-3 py-5 text-center text-xs text-muted-foreground">Aún no hay integrantes. Agrégalos con los campos de arriba.</td></tr>}
+                  {form.members.length === 0 && <tr><td colSpan={6} className="px-3 py-8 text-center text-xs text-muted-foreground">Aún no hay integrantes. Agrégalos con los campos de arriba.</td></tr>}
                   {form.members.map((entry, index) => (
                     <tr key={`${entry.name}-${index}`} className={memberIndex === index ? 'bg-primary/5' : undefined}>
-                      <td className="px-3 py-2 text-center tabular-nums">{index + 1}</td>
-                      <td className="px-3 py-2 font-medium">{entry.name}</td>
-                      <td className="px-3 py-2">{entry.position}</td>
-                      <td className="px-3 py-2">{entry.condition}</td>
-                      <td className="px-3 py-2"><Tag>{entry.level}</Tag></td>
-                      <td className="px-3 py-2">
-                        <span className="flex justify-center gap-1">
+                      <td className="px-2 py-2 text-center tabular-nums text-muted-foreground">{index + 1}</td>
+                      <td className="px-2 py-2 font-medium">{entry.name}</td>
+                      <td className="px-2 py-2">{entry.position}</td>
+                      <td className="px-2 py-2">{entry.condition}</td>
+                      <td className="px-2 py-2"><Tag>{entry.level}</Tag></td>
+                      <td className="px-2 py-2">
+                        <span className="flex justify-end gap-0.5">
                           <Button type="button" variant="ghost" size="icon-sm" onClick={() => { setMember(entry); setMemberIndex(index) }} aria-label={`Editar a ${entry.name}`}><Pencil /></Button>
                           <Button type="button" variant="ghost" size="icon-sm" className="text-destructive hover:bg-destructive/10" aria-label={`Quitar a ${entry.name}`}
                             onClick={() => { set({ members: form.members.filter((_, other) => other !== index) }); if (memberIndex === index) { setMember(emptyMember); setMemberIndex(null) } }}><Trash2 /></Button>
@@ -360,36 +418,14 @@ function OrganizationForm({ item, onClose, onSaved }) {
               </table>
             </div>
           </Section>
-
-          <Section number={3} icon={Paperclip} title="Documento de conformación" className="md:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.3fr)]">
-            <Field label="Tipo de documento" required>
-              <span className="grid gap-2 pt-1 font-normal">
-                {CONFORMATION_TYPES.map((value) => (
-                  <label key={value} className="flex cursor-pointer items-center gap-2 text-sm"><input type="radio" name="docType" className="accent-[var(--primary)]" checked={form.docType === value} onChange={() => set({ docType: value })} /> {value}</label>
-                ))}
-              </span>
-            </Field>
-            <div className="grid content-start gap-3">
-              <Field label="N.° de documento" required><Input value={form.docNumber} onChange={(event) => set({ docNumber: event.target.value })} maxLength={80} placeholder="R.D. N.° 045-2026-IE.LA" required /></Field>
-              <Field label="Fecha de emisión" required><Input type="date" value={form.docDate} onChange={(event) => set({ docDate: event.target.value })} required /></Field>
-            </div>
-            <div className="md:col-span-2 lg:col-span-1">
-              <PdfDrop file={file} current={stored} onFile={setFile} onView={() => files.view(fileUrl(item))} onRemove={() => { if (file) setFile(null); else setRemoveFile(true) }} />
-            </div>
-          </Section>
-
-          <Section number={4} icon={CalendarRange} title="Vigencia" className="sm:grid-cols-3">
-            <Field label="Inicio de vigencia" required><Input type="date" value={form.validFrom} onChange={(event) => set({ validFrom: event.target.value })} required /></Field>
-            <Field label="Fin de vigencia" required><Input type="date" value={form.validTo} min={form.validFrom} onChange={(event) => set({ validTo: event.target.value })} required /></Field>
-            <Field label="Periodo"><Input value={form.validFrom && form.validTo ? `${dmy(form.validFrom)} – ${dmy(form.validTo)}` : '—'} readOnly disabled /></Field>
-          </Section>
         </form>
-        <DialogFooter className="items-center gap-2 sm:justify-between">
-          <FormNote>Los campos con (<span className="text-destructive">*</span>) son obligatorios.</FormNote>
-          <div className="flex gap-2">
+
+        <DialogFooter className="gap-2 sm:items-center sm:justify-between">
+          <FormNote>Los campos marcados con <span className="text-destructive">*</span> son obligatorios.</FormNote>
+          <span className="flex justify-end gap-2">
             <Button type="button" variant="outline" disabled={saving} onClick={onClose}><X /> Cancelar</Button>
-            <Button type="submit" form="organization-form" disabled={saving}><Save /> {saving ? 'Guardando…' : 'Guardar registro'}</Button>
-          </div>
+            <Button type="submit" form="organization-form" disabled={saving}><Save /> {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Guardar registro'}</Button>
+          </span>
         </DialogFooter>
       </DialogContent>
     </Dialog>

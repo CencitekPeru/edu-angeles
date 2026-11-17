@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
-import { useCan } from '../../lib/permissions'
+import { canView, useCan } from '../../lib/permissions'
 import { CHIP_BASE, TONE } from '../../lib/tones'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -75,7 +75,7 @@ const dmy = (iso) => {
 }
 
 export function MaintenancePage({ mode = 'list' }) {
-  const { toast } = useApp()
+  const { toast, user } = useApp()
   const canEdit = useCan()
   const [rows, setRows] = useState([])
   const [all, setAll] = useState([])
@@ -152,7 +152,7 @@ export function MaintenancePage({ mode = 'list' }) {
           { to: '/admin/mantenimiento', label: 'Mantenimientos', icon: ClipboardList, active: !plan },
           { to: '/admin/mantenimiento/cronograma', label: 'Plan de mantenimiento', icon: CalendarDays, active: plan },
           { to: '/admin/mantenimiento/historial', label: 'Historial del bien', icon: History, active: false },
-        ].map((tab) => {
+        ].filter((tab) => canView(user, tab.to)).map((tab) => {
           const Icon = tab.icon
           return (
             <Link key={tab.to} to={tab.to} className={cn('-mb-px flex items-center gap-2 rounded-t-lg border px-4 py-2.5 text-sm font-semibold transition-colors', tab.active ? 'border-border border-b-card bg-card text-primary shadow-[inset_0_-2px_0_var(--primary)]' : 'border-transparent text-muted-foreground hover:text-foreground')}>

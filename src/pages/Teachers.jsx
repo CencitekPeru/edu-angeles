@@ -10,7 +10,7 @@ import { Avatar, PageHeader } from '../components/ui'
 import { Pill, Table } from './campus/kit'
 import { roleLabel, useCan } from '../lib/permissions'
 import { api } from '../lib/api'
-import { MODULES, accessOf, primaryRole, roleSetDefaults, rolesOf, sameActions } from '../lib/accessModel'
+import { PERMISSION_KEYS, accessOf, primaryRole, roleSetDefaults, rolesOf, sameActions } from '../lib/accessModel'
 import PermissionGrid from '../components/PermissionGrid'
 import RolesManager, { BUILTIN_ROLES } from './Roles'
 
@@ -119,7 +119,7 @@ function RolePicker({ value = [], onChange, disabled, teacher, canCreate }) {
 /** Checkbox permissions inside the user modal. Coordinación always has everything. */
 function PermissionsField({ roles, value, onChange, readOnly, note }) {
   const base = roleSetDefaults(roles)
-  const changed = MODULES.some((module) => !sameActions(value[module.key], base[module.key]))
+  const changed = PERMISSION_KEYS.some((key) => !sameActions(value[key], base[key]))
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -171,7 +171,7 @@ export default function Teachers() {
     const role = mainRole || primaryRole(roles)
     if (!canAssign || userId === currentUser.id) return true
     const base = roleSetDefaults(roles)
-    const custom = Object.fromEntries(MODULES.filter((module) => !sameActions(perms[module.key], base[module.key])).map((module) => [module.key, perms[module.key]]))
+    const custom = Object.fromEntries(PERMISSION_KEYS.filter((key) => !sameActions(perms[key], base[key])).map((key) => [key, perms[key]]))
     const result = await api(`/api/users/${userId}/permissions`, { method: 'PATCH', body: { permissions: Object.keys(custom).length ? custom : null, roles: roles.filter((item) => item !== role) } })
     if (!result.ok) { setError(result.error || 'Se guardaron los datos, pero no los permisos.'); return false }
     await refresh()

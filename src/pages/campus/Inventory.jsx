@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { Boxes, Bus, CheckCircle2, Cog, Landmark, ChevronLeft, ChevronRight, Cpu, Eye, Hash, FileDown, FileSpreadsheet, FileText, FileUp, ListChecks, MapPin, Monitor, Package, Pencil, Plus, Search, Tag, Trash2, Wrench, XCircle } from 'lucide-react'
 import { api } from '../../lib/api'
 import { useApp } from '../../context/AppContext'
-import { useCan } from '../../lib/permissions'
+import { canView, useCan } from '../../lib/permissions'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Field, Choice } from '@/components/ui/field'
@@ -19,6 +19,7 @@ import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
 /** Tabs shared by every inventory section, plus the catalogs. */
 export function InventoryTabs() {
   const { pathname } = useLocation()
+  const { user } = useApp()
   const tabs = [
     { to: '/admin/inventario', label: 'Bienes tecnológicos', icon: Monitor },
     { to: '/admin/materiales', label: 'Bienes mobiliarios', icon: Package },
@@ -29,7 +30,8 @@ export function InventoryTabs() {
   ]
   return (
     <nav className="flex flex-wrap gap-1 border-b border-border">
-      {tabs.map((tab) => {
+      {/* Only the screens this user may open (see «Permisos por módulo»). */}
+      {tabs.filter((tab) => canView(user, tab.to)).map((tab) => {
         const Icon = tab.icon
         const active = pathname === tab.to
         return (

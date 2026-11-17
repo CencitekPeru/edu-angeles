@@ -188,7 +188,7 @@ function ExternalForm({ item, onClose, onSaved }) {
         <datalist id="ext-dependencies">{DEPENDENCIES.map((value) => <option key={value} value={value} />)}</datalist>
         <datalist id="ext-responsibles">{RESPONSIBLES.map((value) => <option key={value} value={value} />)}</datalist>
         <form id="external-form" className="grid gap-3 lg:grid-cols-[3fr_2fr]" onSubmit={save}>
-          <Section number={1} icon={Info} title="Datos del documento" className="sm:grid-cols-3">
+          <Section icon={Info} title="Datos del documento" className="sm:grid-cols-3">
             <Field label="Tipo de documento" required><Select value={form.docType} onChange={(docType) => set({ docType })} options={opts(EXTERNAL_DOC_TYPES)} /></Field>
             <Field label="N.° de documento" required>
               <span className="relative"><Hash className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -197,20 +197,20 @@ function ExternalForm({ item, onClose, onSaved }) {
             <Field label="Fecha de emisión" required><Input type="date" value={form.issueDate} max={today} onChange={(event) => set({ issueDate: event.target.value })} required /></Field>
             <Field label="Asunto" required className="sm:col-span-3"><CountedText rows={2} max={300} value={form.title} onChange={(title) => set({ title })} placeholder="Asunto del documento…" required /></Field>
           </Section>
-          <Section number={2} icon={Landmark} title="Entidad remitente" className="sm:grid-cols-2">
+          <Section icon={Landmark} title="Entidad remitente" className="sm:grid-cols-2">
             <Field label="Entidad" required><Select value={form.entity} onChange={(entity) => set({ entity })} options={opts(ENTITIES)} /></Field>
             <Field label="Área / Dependencia"><Input list="ext-dependencies" value={form.area} onChange={(event) => set({ area: event.target.value })} maxLength={120} placeholder="Ej. Dirección de Gestión Pedagógica" /></Field>
             <Field label="Remitente / Firmante"><Input value={form.sender} onChange={(event) => set({ sender: event.target.value })} maxLength={160} placeholder="Ej. Lic. Carlos Mendoza Torres" /></Field>
             <Field label="Cargo"><Input value={form.senderRole} onChange={(event) => set({ senderRole: event.target.value })} maxLength={120} placeholder="Ej. Director UGEL" /></Field>
           </Section>
-          <Section number={3} icon={Settings2} title="Gestión y seguimiento" className="sm:grid-cols-4">
+          <Section icon={Settings2} title="Gestión y seguimiento" className="sm:grid-cols-4">
             <Field label="Responsable de atención" required><Input list="ext-responsibles" value={form.responsible} onChange={(event) => set({ responsible: event.target.value })} maxLength={160} required /></Field>
             <Field label="Fecha de recepción" required><Input type="date" value={form.receivedDate} max={today} onChange={(event) => set({ receivedDate: event.target.value })} required /></Field>
             <Field label="Plazo de atención"><Input type="date" value={form.deadline} min={form.receivedDate} onChange={(event) => set({ deadline: event.target.value })} /></Field>
             <Field label="Estado" required><Select value={form.status} onChange={(status) => set({ status })} options={opts(EXTERNAL_DOC_STATUS)} /></Field>
             <Field label="Acciones / Seguimiento" className="sm:col-span-4"><CountedText rows={3} max={500} value={form.actions} onChange={(actions) => set({ actions })} placeholder="Acciones realizadas para atender el documento…" /></Field>
           </Section>
-          <Section number={4} icon={Paperclip} title="Documento adjunto">
+          <Section icon={Paperclip} title="Documento adjunto">
             <PdfDrop file={file} current={stored} onFile={setFile} onView={() => files.view(fileUrl(item))} onRemove={() => { if (file) setFile(null); else setRemoveFile(true) }} />
           </Section>
         </form>

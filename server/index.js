@@ -16,7 +16,7 @@ import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { documentsRouter, ensureDocuments } from './documents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
-import { EDITABLE_ROLES, ROLE_DEFAULTS, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
+import { EDITABLE_ROLES, roleOriginal, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
 
 /** Role permissions edited in «Roles y permisos»: only the levels that differ from the built-in defaults are stored. */
 async function ensureRoles() {
@@ -488,7 +488,7 @@ app.put('/api/roles/:role/permissions', requireAuth, wrap(async (req, res) => {
   const { role } = req.params
   if (!EDITABLE_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'Los permisos de este rol no se pueden modificar.' })
   const actions = req.body.permissions === null ? null : parsePermissions(req.body.permissions)
-  const changed = actions ? Object.fromEntries(Object.entries(actions).filter(([key, list]) => !sameActions(ROLE_DEFAULTS[role][key], list))) : {}
+  const changed = actions ? Object.fromEntries(Object.entries(actions).filter(([key, list]) => !sameActions(roleOriginal(role)[key], list))) : {}
   if (Object.keys(changed).length) {
     await pool.query('INSERT INTO role_permissions (role, permissions, updated_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permissions = VALUES(permissions), updated_by = VALUES(updated_by)',
       [role, JSON.stringify(changed), req.user.id])

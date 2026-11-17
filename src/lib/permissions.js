@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { ACTIONS, MODULE_KEYS, can, canChange, canSee, customRoleList, firstPathFor, isCustomRole, levelOf, moduleActions, moduleForPath } from './accessModel'
+import { ACTIONS, MODULE_KEYS, can, canChange, canSee, canSeeView, customRoleList, firstPathFor, isCustomRole, levelOf, moduleActions, moduleForPath, viewForPath } from './accessModel'
 
 /**
  * Roles:
@@ -41,8 +41,10 @@ export function canView(user, path) {
   const module = moduleForPath(path)
   if (!module) return user.role === 'admin'
   // Scanning registers attendance, so it needs «Editar».
-  if (path === '/admin/asistencia/escanear') return canChange(user, 'asistencia')
-  return canSee(user, module)
+  if (path === '/admin/asistencia/escanear') return canChange(user, 'asistencia') && canSeeView(user, 'asistencia.escanear')
+  // Screens inside a module can be hidden one by one (see VIEWS in accessModel.js).
+  const view = viewForPath(path)
+  return view ? canSeeView(user, view) : canSee(user, module)
 }
 
 /** Whether the user may create, edit or delete in a module (its key, e.g. 'asistencia'). */

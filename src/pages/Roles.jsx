@@ -7,7 +7,7 @@ import { Field } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { api } from '../lib/api'
-import { MODULES, MODULE_KEYS, ROLE_DEFAULTS, levelOfActions, roleDefaults, rolesOf, sameActions } from '../lib/accessModel'
+import { MODULES, PERMISSION_KEYS, levelOfActions, roleDefaults, roleOriginal, rolesOf, sameActions } from '../lib/accessModel'
 import { ROLE_LABEL } from '../lib/permissions'
 import PermissionGrid from '../components/PermissionGrid'
 
@@ -22,7 +22,7 @@ const FIXED_TEXT = {
   admin: 'Siempre tiene todos los permisos, para que el sistema nunca quede sin administrador.',
   teacher: 'Panel docente de reservas. Sus permisos se asignan por cuenta.',
 }
-const none = () => Object.fromEntries(MODULE_KEYS.map((key) => [key, []]))
+const none = () => Object.fromEntries(PERMISSION_KEYS.map((key) => [key, []]))
 
 /** Short summary of what a role allows: the modules it opens. */
 function summary(perms) {
@@ -83,8 +83,8 @@ export default function RolesManager({ open, onOpenChange, startNew = false, onC
     setDeleting(null)
   }
 
-  const original = editing?.builtin ? ROLE_DEFAULTS[editing.key] : null
-  const changedFromOriginal = original && MODULES.some((module) => !sameActions(editing.perms[module.key], original[module.key]))
+  const original = editing?.builtin ? roleOriginal(editing.key) : null
+  const changedFromOriginal = original && PERMISSION_KEYS.some((key) => !sameActions(editing.perms[key], original[key]))
 
   return (
     <>

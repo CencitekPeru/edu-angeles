@@ -183,7 +183,7 @@ function AdminForm({ item, onClose, onSaved }) {
         <FormHeader icon={FileText} title={editing ? 'Editar documento administrativo' : 'Registrar Documento Administrativo'} text="Registre la información del documento interno de la institución." />
         <StaffNames id="adm-staff" />
         <form id="admin-doc-form" className="grid gap-3 lg:grid-cols-[3fr_2fr]" onSubmit={save}>
-          <Section number={1} icon={Info} title="Datos del documento" className="sm:grid-cols-3">
+          <Section icon={Info} title="Datos del documento" className="sm:grid-cols-3">
             <Field label="Tipo de documento" required><Select value={form.docType} onChange={(docType) => set({ docType })} options={opts(ADMIN_DOC_TYPES)} /></Field>
             <Field label="N.° de documento" required>
               <span className="relative"><Hash className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -192,19 +192,19 @@ function AdminForm({ item, onClose, onSaved }) {
             <Field label="Fecha del documento" required><Input type="date" value={form.issueDate} onChange={(event) => set({ issueDate: event.target.value })} required /></Field>
             <Field label="Asunto" required className="sm:col-span-3"><CountedText rows={2} max={300} value={form.title} onChange={(title) => set({ title })} placeholder="Asunto del documento…" required /></Field>
           </Section>
-          <Section number={2} icon={Landmark} title="Área / Dependencia" className="sm:grid-cols-2">
+          <Section icon={Landmark} title="Área / Dependencia" className="sm:grid-cols-2">
             <Field label="Área / Dependencia" required className="sm:col-span-2"><Select value={form.area} onChange={(area) => set({ area })} options={opts(AREAS, 'Seleccione…')} required /></Field>
             <Field label="Responsable de elaboración" required><Input list="adm-staff" value={form.responsible} onChange={(event) => set({ responsible: event.target.value })} maxLength={160} required /></Field>
             <Field label="Cargo"><Input value={form.responsibleRole} onChange={(event) => set({ responsibleRole: event.target.value })} maxLength={120} placeholder="Ej. Coordinador CIST" /></Field>
           </Section>
-          <Section number={3} icon={ClipboardCheck} title="Gestión y control" className="sm:grid-cols-4">
+          <Section icon={ClipboardCheck} title="Gestión y control" className="sm:grid-cols-4">
             <Field label="Estado del documento" required><Select value={form.status} onChange={(status) => set({ status })} options={opts(ADMIN_DOC_STATUS)} /></Field>
             <Field label="Fecha de registro" required><Input type="date" value={form.receivedDate} onChange={(event) => set({ receivedDate: event.target.value })} required /></Field>
             <Field label="Plazo de atención"><Input type="date" value={form.deadline} min={form.receivedDate} onChange={(event) => set({ deadline: event.target.value })} /></Field>
             <Field label="Fecha de atención"><Input type="date" value={form.attendedDate} min={form.receivedDate} onChange={(event) => set({ attendedDate: event.target.value })} /></Field>
             <Field label="Acciones / Descripción" required className="sm:col-span-4"><CountedText rows={3} max={500} value={form.actions} onChange={(actions) => set({ actions })} placeholder="Describe el contenido del documento o las acciones realizadas…" required /></Field>
           </Section>
-          <Section number={4} icon={Paperclip} title="Documento adjunto">
+          <Section icon={Paperclip} title="Documento adjunto">
             <PdfDrop file={file} current={stored} onFile={setFile} onView={() => files.view(fileUrl(item))} onRemove={() => { if (file) setFile(null); else setRemoveFile(true) }} />
           </Section>
         </form>

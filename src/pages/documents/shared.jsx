@@ -14,11 +14,12 @@ export { Field } from '../psychology/shared'
  * Form section: `className` lays out the fields inside it; `outer` sizes the section itself in the form grid
  * (e.g. 'lg:col-span-2' so it takes a whole row).
  */
-export function Section({ number, icon: Icon, title, children, className, outer }) {
+// Same look as the sections of «Nueva Actividad» (title in the primary color, no numbering).
+export function Section({ icon: Icon, title, children, className, outer }) {
   return (
     <section className={cn('overflow-hidden rounded-lg border border-border', outer)}>
-      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-sm font-bold dark:bg-muted/40">
-        {Icon && <Icon className="size-4 text-primary" />} {number ? `${number}. ` : ''}{title}
+      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-sm font-bold text-primary dark:bg-muted/40">
+        {Icon && <Icon className="size-4" />} {title}
       </h3>
       <div className={cn('grid gap-3 p-3', className)}>{children}</div>
     </section>
@@ -129,22 +130,27 @@ export function CountedText({ value, onChange, max, rows = 3, ...props }) {
 }
 
 /** Classes for the DialogContent of the record forms (wide and scrollable, like the other forms of the panel). */
-export const FORM_DIALOG = 'max-h-[94vh] overflow-y-auto sm:max-w-3xl lg:max-w-5xl'
+export const FORM_DIALOG = 'max-h-[94vh] w-[96vw] overflow-y-auto sm:max-w-6xl'
 
-/** Header of the module dialogs: same style as the rest of the panel (icon, title and description). */
+/** Header of the module dialogs, same as «Nueva Actividad»: icon in a tinted box, large title and description. */
 export function FormHeader({ icon: Icon, title, text }) {
   return (
     <DialogHeader>
-      <DialogTitle className="flex items-center gap-2">{Icon && <Icon className="size-5 shrink-0 text-primary" />} {title}</DialogTitle>
-      {text && <DialogDescription>{text}</DialogDescription>}
+      <div className="flex items-center gap-3">
+        {Icon && <span className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="size-6" /></span>}
+        <div className="grid min-w-0 gap-0.5 text-left">
+          <DialogTitle className="text-xl">{title}</DialogTitle>
+          {text && <DialogDescription>{text}</DialogDescription>}
+        </div>
+      </div>
     </DialogHeader>
   )
 }
 
 export function FormNote({ children }) {
   return (
-    <p className="mr-auto flex items-start gap-2 text-xs text-muted-foreground">
-      <Info className="mt-0.5 size-4 shrink-0 text-primary" />
+    <p className="mr-auto flex items-center gap-1.5 rounded-md bg-muted/60 px-2.5 py-1.5 text-xs text-muted-foreground">
+      <Info className="size-3.5 shrink-0" />
       <span>{children}</span>
     </p>
   )
