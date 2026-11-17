@@ -3,6 +3,9 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   AlertTriangle,
   BookOpen,
+  ClipboardCheck,
+  IdCard,
+  Wallet,
   FileStack,
   Inbox,
   Network,
@@ -90,6 +93,15 @@ const adminNav = [
           { to: '/admin/asistencia/qr', label: 'Códigos QR', icon: QrCode },
           { to: '/admin/asistencia/historial', label: 'Historial de asistencia', icon: History },
           { to: '/admin/asistencia/reportes', label: 'Reportes', icon: BarChart3 },
+        ],
+      },
+      {
+        label: 'Reuniones de padres y multas',
+        icon: Users,
+        children: [
+          { to: '/admin/padres/reuniones', label: 'Asistencia a reuniones', icon: ClipboardCheck },
+          { to: '/admin/padres/multas', label: 'Registro de multas', icon: Wallet },
+          { to: '/admin/padres/consulta', label: 'Consulta por DNI', icon: IdCard },
         ],
       },
       {

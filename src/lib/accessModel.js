@@ -31,6 +31,7 @@ export const MODULES = [
   { key: 'reportes', label: 'Reportes de bienes', group: 'Gestión Tecnológica', paths: ['/admin/reportes'], api: ['/api/reports'], privateRead: true, actions: ['view', 'export'] },
   { key: 'estudiantes', label: 'Estudiantes', group: 'Gestión Escolar', paths: ['/admin/estudiantes'], api: ['/api/students'], privateRead: true },
   { key: 'asistencia', label: 'Asistencia estudiantil', group: 'Gestión Escolar', paths: ['/admin/asistencia'], api: ['/api/attendance', '/api/justifications'], privateRead: true },
+  { key: 'padres', label: 'Reuniones de padres y multas', group: 'Gestión Escolar', paths: ['/admin/padres'], api: ['/api/parent-meetings', '/api/parent-fines', '/api/guardians'], privateRead: true },
   { key: 'psicologia', label: 'Atención psicológica', group: 'Gestión Escolar', paths: ['/admin/psicologia'], api: ['/api/psychology'], privateRead: true },
   { key: 'actividades', label: 'Calendario institucional (actividades)', group: 'Gestión Documental', paths: [], api: ['/api/activities', '/api/activity-tasks', '/api/activity-resources', '/api/activity-reports', '/api/commissions'], privateRead: true },
   { key: 'documentos', label: 'Gestión documental', group: 'Gestión Documental', paths: ['/admin/documentos'], api: ['/api/docs'], privateRead: true },
@@ -61,6 +62,9 @@ export const VIEWS = [
   { key: 'asistencia.qr', module: 'asistencia', label: 'Códigos QR', paths: ['/admin/asistencia/qr'] },
   { key: 'asistencia.historial', module: 'asistencia', label: 'Historial de asistencia', paths: ['/admin/asistencia/historial'] },
   { key: 'asistencia.reportes', module: 'asistencia', label: 'Reportes de asistencia', paths: ['/admin/asistencia/reportes'] },
+  { key: 'padres.reuniones', module: 'padres', label: 'Convocatorias y asistencia', paths: ['/admin/padres/reuniones'] },
+  { key: 'padres.multas', module: 'padres', label: 'Registro de multas', paths: ['/admin/padres/multas'] },
+  { key: 'padres.consulta', module: 'padres', label: 'Consulta de apoderado (DNI)', paths: ['/admin/padres/consulta'] },
   { key: 'psicologia.atenciones', module: 'psicologia', label: 'Registro de atenciones', paths: ['/admin/psicologia/atenciones'] },
   { key: 'psicologia.casos', module: 'psicologia', label: 'Casos en seguimiento', paths: ['/admin/psicologia/casos'] },
   { key: 'psicologia.seguimiento', module: 'psicologia', label: 'Seguimiento y citas', paths: ['/admin/psicologia/seguimiento', '/admin/psicologia/citas'] },
@@ -304,7 +308,7 @@ export function exportDenied(user, key) {
 export function firstPathFor(user) {
   // Modules in menu order: the first screen the user may open (a module with views goes to its first allowed view).
   const order = [['dashboard', '/admin'], ['inventario'], ['incidencias', '/admin/incidencias'], ['mantenimiento'], ['reportes', '/admin/reportes'], ['estudiantes', '/admin/estudiantes'],
-    ['asistencia'], ['psicologia'], ['documentos'], ['reservas'], ['usuarios'], ['configuracion', '/admin/configuracion']]
+    ['asistencia'], ['padres'], ['psicologia'], ['documentos'], ['reservas'], ['usuarios'], ['configuracion', '/admin/configuracion']]
   for (const [key, path] of order) {
     if (!canSee(user, key)) continue
     if (path) return path

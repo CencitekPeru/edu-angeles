@@ -38,6 +38,9 @@ import InstrumentsPage from './pages/documents/Instruments'
 import OrganizationPage from './pages/documents/Organization'
 import ExternalDocsPage from './pages/documents/ExternalDocs'
 import AdminDocsPage from './pages/documents/AdminDocs'
+import GuardianMeetingsPage from './pages/guardians/Meetings'
+import GuardianFinesPage from './pages/guardians/Fines'
+import GuardianLookupPage from './pages/guardians/Lookup'
 import ParentLogin from './pages/parents/ParentLogin'
 import ParentPortal from './pages/parents/ParentPortal'
 
@@ -137,6 +140,10 @@ function Gate() {
             <Route path="/admin/psicologia/reportes" element={<PsychologyReports />} />
             {/* The activities section was removed: its calendar opens from Organización institucional. */}
             <Route path="/admin/actividades/*" element={<Navigate to="/admin/documentos/organizacion" replace />} />
+            <Route path="/admin/padres" element={<Navigate to="/admin/padres/reuniones" replace />} />
+            <Route path="/admin/padres/reuniones" element={<GuardianMeetingsPage />} />
+            <Route path="/admin/padres/multas" element={<GuardianFinesPage />} />
+            <Route path="/admin/padres/consulta" element={<GuardianLookupPage />} />
             <Route path="/admin/documentos" element={<Navigate to="/admin/documentos/instrumentos" replace />} />
             <Route path="/admin/documentos/instrumentos" element={<InstrumentsPage />} />
             <Route path="/admin/documentos/organizacion" element={<OrganizationPage />} />

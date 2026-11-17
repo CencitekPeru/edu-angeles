@@ -8,6 +8,9 @@ import { ThemeToggle } from '../../components/ThemeToggle'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { DECISION_META, STATUS_META, StatusChip, ampm, dmy, longDate, tableHead, td, th, todayLima } from '../attendance/shared'
+import { soles } from '../../lib/guardianMeetings'
+import { Pill } from '../campus/kit'
+import { DebtBanner } from '../guardians/shared'
 
 const pct = (totals) => (totals.total ? ((totals.presente + totals.tardanza) / totals.total) * 100 : 0)
 
@@ -126,6 +129,30 @@ export default function ParentPortal() {
           <h1 className="text-2xl font-extrabold tracking-tight">Consulta de Asistencia</h1>
           <p className="text-sm text-muted-foreground">{longDate(todayLima())}</p>
         </div>
+
+        {me?.debt && (
+          <section className="space-y-2">
+            <DebtBanner pendingAmount={me.debt.pendingAmount} pendingCount={me.debt.pendingCount} />
+            {me.debt.fines.length > 0 && (
+              <details className="rounded-xl border border-border bg-card shadow-sm" open={me.debt.pendingCount > 0}>
+                <summary className="cursor-pointer px-4 py-2.5 font-bold">Multas por inasistencia a reuniones ({me.debt.fines.length})</summary>
+                <ul className="divide-y divide-border border-t border-border text-sm">
+                  {me.debt.fines.map((fine) => (
+                    <li key={fine.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-medium">{fine.concept}</span>
+                        <span className="text-xs text-muted-foreground">{dmy(fine.issuedOn)}{fine.status === 'Pagada' && fine.paidOn ? ` · Pagada el ${dmy(fine.paidOn)}` : ''}</span>
+                      </span>
+                      <span className="font-bold tabular-nums">{soles(fine.amount)}</span>
+                      <Pill value={fine.status} />
+                    </li>
+                  ))}
+                </ul>
+                {me.debt.pendingCount > 0 && <p className="border-t border-border px-4 py-2.5 text-xs text-muted-foreground">Para regularizar tu deuda acércate a la institución. Si consideras que hay un error, comunícate con la coordinación.</p>}
+              </details>
+            )}
+          </section>
+        )}
 
         {me && !me.children.length && (
           <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">

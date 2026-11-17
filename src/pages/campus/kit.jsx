@@ -139,6 +139,13 @@ export function Pill({ value, className }) {
     Entregado: 'ok',
     'No disponible': 'bad',
     Concluido: 'ok',
+    // Reuniones de padres y multas
+    Pagada: 'ok',
+    Exonerada: 'neutral',
+    'Asistió': 'ok',
+    'Faltó': 'bad',
+    Justificado: 'neutral',
+    Tardanza: 'warn',
     // Gestión documental
     Vigente: 'ok',
     'En elaboración': 'warn',
