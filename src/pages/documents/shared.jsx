@@ -8,7 +8,22 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { todayLima } from '../attendance/shared'
 
-export { Field, Section } from '../psychology/shared'
+export { Field } from '../psychology/shared'
+
+/**
+ * Form section: `className` lays out the fields inside it; `outer` sizes the section itself in the form grid
+ * (e.g. 'lg:col-span-2' so it takes a whole row).
+ */
+export function Section({ number, icon: Icon, title, children, className, outer }) {
+  return (
+    <section className={cn('overflow-hidden rounded-lg border border-border', outer)}>
+      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-4 py-2.5 text-sm font-bold dark:bg-muted/40">
+        {Icon && <Icon className="size-4 text-primary" />} {number ? `${number}. ` : ''}{title}
+      </h3>
+      <div className={cn('grid gap-4 p-4', className)}>{children}</div>
+    </section>
+  )
+}
 export { FilterLabel, Select } from '../attendance/shared'
 
 export const DOCS = {

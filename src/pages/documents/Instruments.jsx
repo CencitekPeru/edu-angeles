@@ -183,7 +183,7 @@ function InstrumentForm({ item, onClose, onSaved }) {
         <FormHeader icon={NotebookPen} title={editing ? 'Editar instrumento de gestión' : 'Registrar instrumento de gestión'} text="Complete la información y adjunte el documento en formato PDF." />
         <StaffNames id="doc-staff" />
         <form id="instrument-form" className="grid gap-3 lg:grid-cols-2" onSubmit={save}>
-          <Section number={1} icon={FileText} title="Información del instrumento" className="sm:grid-cols-2 lg:col-span-2">
+          <Section number={1} icon={FileText} title="Información del instrumento" className="sm:grid-cols-2" outer="lg:col-span-2">
             <Field label="Tipo de instrumento" required>
               <Select value={form.docType} onChange={chooseType} required options={[{ value: '', label: 'Seleccione…' }, ...INSTRUMENT_TYPES.map((value) => ({ value, label: `${value} – ${INSTRUMENT_NAMES[value]}` }))]} />
             </Field>
@@ -211,7 +211,7 @@ function InstrumentForm({ item, onClose, onSaved }) {
             <Field label="Versión" required><Input value={form.version} onChange={(event) => set({ version: event.target.value })} maxLength={20} placeholder="v1.0" required /></Field>
             <Field label="Estado" required><Select value={form.status} onChange={(status) => set({ status })} options={opts(INSTRUMENT_STATUS)} /></Field>
           </Section>
-          <Section number={6} icon={ClipboardCheck} title="Archivo del documento" className="sm:grid-cols-[3fr_2fr] lg:col-span-2">
+          <Section number={6} icon={ClipboardCheck} title="Archivo del documento" className="sm:grid-cols-[3fr_2fr]" outer="lg:col-span-2">
             <PdfDrop file={file} current={stored} onFile={setFile} onView={() => files.view(`/api/docs/records/${item.id}/file`)}
               onRemove={() => { if (file) setFile(null); else setRemoveFile(true) }} />
             <div className="rounded-lg border border-[#cfd8ea] bg-[#f2f5fb] p-3 text-xs text-foreground dark:border-blue-500/30 dark:bg-blue-500/10">
