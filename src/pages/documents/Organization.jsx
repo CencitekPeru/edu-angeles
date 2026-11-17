@@ -34,7 +34,7 @@ function OrgTable({ items, empty, actions }) {
     group.commissions.push(item)
   }
   const rowsOf = (item) => Math.max(1, item.members.length)
-  const head = 'px-3 py-2.5 text-left text-xs font-bold whitespace-nowrap text-white'
+  const head = 'px-3 py-2.5 text-left text-xs font-bold whitespace-nowrap text-foreground/75'
   const cell = 'px-3 py-2 align-middle'
   let number = 0
 
@@ -42,7 +42,7 @@ function OrgTable({ items, empty, actions }) {
     <div className="overflow-hidden rounded-lg border border-border">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] border-collapse text-sm">
-          <thead className="bg-[#0b1730]">
+          <thead className="bg-slate-50 dark:bg-muted/40">
             <tr>
               <th className={`${head} w-14 text-center`}>N.°</th>
               <th className={`${head} w-56`}>Comité</th>
@@ -285,7 +285,7 @@ function OrganizationForm({ item, onClose, onSaved }) {
         <StaffNames id="org-staff" />
         <datalist id="org-committees">{COMMITTEES.map((value) => <option key={value} value={value} />)}</datalist>
         <datalist id="org-commissions">{subcommissionsOf(form.committee).map((value) => <option key={value} value={value} />)}</datalist>
-        <form id="organization-form" className="grid gap-4" onSubmit={save}>
+        <form id="organization-form" className="grid gap-3" onSubmit={save}>
           <Section number={1} icon={ClipboardList} title="Información de la organización" className="sm:grid-cols-2 lg:grid-cols-4">
             <Field label="Comité de gestión" required className="sm:col-span-2"><Input list="org-committees" value={form.committee} onChange={(event) => set({ committee: event.target.value })} maxLength={160} placeholder="Selecciona o escribe el comité" required /></Field>
             <Field label="Comisión de trabajo" required className="sm:col-span-2"><Input list="org-commissions" value={form.commission} onChange={(event) => set({ commission: event.target.value })} maxLength={200} placeholder="Selecciona o escribe la comisión" required /></Field>
@@ -309,14 +309,14 @@ function OrganizationForm({ item, onClose, onSaved }) {
             </div>
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[640px] text-sm">
-                <thead className="bg-[#0b1730] text-xs text-white">
+                <thead className="bg-slate-50 text-xs text-foreground/75 dark:bg-muted/40">
                   <tr>
-                    <th className="w-12 px-3 py-2.5 text-center font-semibold">N.°</th>
-                    <th className="px-3 py-2.5 text-left font-semibold">Integrante (Docente / Trabajador)</th>
-                    <th className="w-32 px-3 py-2.5 text-left font-semibold">Cargo</th>
-                    <th className="w-28 px-3 py-2.5 text-left font-semibold">Condición</th>
-                    <th className="w-36 px-3 py-2.5 text-left font-semibold">Nivel</th>
-                    <th className="w-24 px-3 py-2.5 text-center font-semibold">Acciones</th>
+                    <th className="w-12 px-3 py-2.5 text-center font-bold">N.°</th>
+                    <th className="px-3 py-2.5 text-left font-bold">Integrante (Docente / Trabajador)</th>
+                    <th className="w-32 px-3 py-2.5 text-left font-bold">Cargo</th>
+                    <th className="w-28 px-3 py-2.5 text-left font-bold">Condición</th>
+                    <th className="w-36 px-3 py-2.5 text-left font-bold">Nivel</th>
+                    <th className="w-24 px-3 py-2.5 text-center font-bold">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -350,7 +350,7 @@ function OrganizationForm({ item, onClose, onSaved }) {
                 ))}
               </span>
             </Field>
-            <div className="grid content-start gap-4">
+            <div className="grid content-start gap-3">
               <Field label="N.° de documento" required><Input value={form.docNumber} onChange={(event) => set({ docNumber: event.target.value })} maxLength={80} placeholder="R.D. N.° 045-2026-IE.LA" required /></Field>
               <Field label="Fecha de emisión" required><Input type="date" value={form.docDate} onChange={(event) => set({ docDate: event.target.value })} required /></Field>
             </div>

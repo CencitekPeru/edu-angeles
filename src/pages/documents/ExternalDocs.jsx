@@ -123,7 +123,7 @@ export default function ExternalDocsPage() {
 
       {viewing && (
         <Dialog open onOpenChange={(open) => { if (!open) setViewing(null) }}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl [&>button:last-child]:top-5 [&>button:last-child]:text-white">
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
             <FormHeader icon={FileText} title={viewing.number} text={viewing.title} />
             <Details rows={[
               ['Estado', <Pill key="s" value={viewing.displayStatus} />],

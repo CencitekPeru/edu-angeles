@@ -17,10 +17,10 @@ export { Field } from '../psychology/shared'
 export function Section({ number, icon: Icon, title, children, className, outer }) {
   return (
     <section className={cn('overflow-hidden rounded-lg border border-border', outer)}>
-      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-4 py-2.5 text-sm font-bold dark:bg-muted/40">
+      <h3 className="flex items-center gap-2 border-b border-border bg-slate-50 px-3 py-2 text-sm font-bold dark:bg-muted/40">
         {Icon && <Icon className="size-4 text-primary" />} {number ? `${number}. ` : ''}{title}
       </h3>
-      <div className={cn('grid gap-4 p-4', className)}>{children}</div>
+      <div className={cn('grid gap-3 p-3', className)}>{children}</div>
     </section>
   )
 }
@@ -128,18 +128,15 @@ export function CountedText({ value, onChange, max, rows = 3, ...props }) {
   )
 }
 
-/** Classes for the DialogContent of the record forms (wide, scrollable, white close button over the dark header). */
-export const FORM_DIALOG = 'max-h-[94vh] overflow-y-auto sm:max-w-3xl lg:max-w-5xl [&>button:last-child]:top-5 [&>button:last-child]:text-white'
+/** Classes for the DialogContent of the record forms (wide and scrollable, like the other forms of the panel). */
+export const FORM_DIALOG = 'max-h-[94vh] overflow-y-auto sm:max-w-3xl lg:max-w-5xl'
 
-/** Dark-blue header of the record dialogs. */
+/** Header of the module dialogs: same style as the rest of the panel (icon, title and description). */
 export function FormHeader({ icon: Icon, title, text }) {
   return (
-    <DialogHeader className="-mx-6 -mt-6 flex-row items-center gap-3 rounded-t-xl bg-[#0b1730] px-6 py-4 pr-12 text-white">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/10"><Icon className="size-5" /></span>
-      <div>
-        <DialogTitle className="text-base font-bold text-white">{title}</DialogTitle>
-        <DialogDescription className="text-xs text-white/70">{text}</DialogDescription>
-      </div>
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">{Icon && <Icon className="size-5 shrink-0 text-primary" />} {title}</DialogTitle>
+      {text && <DialogDescription>{text}</DialogDescription>}
     </DialogHeader>
   )
 }

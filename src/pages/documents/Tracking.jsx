@@ -36,7 +36,7 @@ export default function TrackingDialog({ record, statuses, canEdit, onClose, onC
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !saving) onClose() }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl [&>button:last-child]:top-5 [&>button:last-child]:text-white">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <FormHeader icon={History} title={`Seguimiento · ${record.number}`} text={record.title} />
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <span className="text-muted-foreground">Estado actual:</span> <Pill value={record.displayStatus} />
