@@ -14,6 +14,7 @@ import { assetsRouter, ensureAssets } from './assets.js'
 import { activitiesRouter, ensureActivities } from './activities.js'
 import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
+import { documentsRouter, ensureDocuments } from './documents.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
 import { EDITABLE_ROLES, ROLE_DEFAULTS, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
 
@@ -54,6 +55,7 @@ app.use(parentsRouter())
 app.use(psychologyRouter())
 app.use(assetsRouter())
 app.use(activitiesRouter())
+app.use(documentsRouter())
 app.use(adminRouter())
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
@@ -621,6 +623,7 @@ if (process.env.NODE_ENV !== 'production') {
     await ensureAssets()
     await ensureActivities()
     await ensureParents()
+    await ensureDocuments()
     await ensureRoles()
     res.json({ ok: true })
   }))
@@ -667,6 +670,7 @@ initDb()
     await ensureAssets()
     await ensureActivities()
     await ensureParents()
+    await ensureDocuments()
     await ensureRoles()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)

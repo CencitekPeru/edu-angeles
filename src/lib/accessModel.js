@@ -33,6 +33,7 @@ export const MODULES = [
   { key: 'asistencia', label: 'Asistencia estudiantil', group: 'Gestión Escolar', paths: ['/admin/asistencia'], api: ['/api/attendance', '/api/justifications'], privateRead: true },
   { key: 'psicologia', label: 'Atención psicológica', group: 'Gestión Escolar', paths: ['/admin/psicologia'], api: ['/api/psychology'], privateRead: true },
   { key: 'actividades', label: 'Gestión de actividades', group: 'Gestión de Actividades', paths: ['/admin/actividades'], api: ['/api/activities', '/api/activity-tasks', '/api/activity-resources', '/api/activity-reports', '/api/commissions'], privateRead: true },
+  { key: 'documentos', label: 'Gestión documental', group: 'Gestión Documental', paths: ['/admin/documentos'], api: ['/api/docs'], privateRead: true },
   { key: 'reservas', label: 'Reservas (solicitudes, calendario y horarios)', group: 'Gestión Reservas', paths: ['/admin/solicitudes', '/admin/calendario', '/admin/horarios'], api: ['/api/fixed-schedules'] },
   { key: 'usuarios', label: 'Usuarios y docentes', group: 'Administración', paths: ['/admin/profesores', '/admin/docentes'], api: ['/api/users'] },
   { key: 'configuracion', label: 'Configuración y base de datos', group: 'Administración', paths: ['/admin/configuracion'], api: ['/api/admin'], privateRead: true },
@@ -228,6 +229,6 @@ export function exportDenied(user, key) {
 export function firstPathFor(user) {
   const order = [['dashboard', '/admin'], ['inventario', '/admin/inventario'], ['incidencias', '/admin/incidencias'], ['mantenimiento', '/admin/mantenimiento'],
     ['reportes', '/admin/reportes'], ['asistencia', '/admin/asistencia'], ['estudiantes', '/admin/estudiantes'], ['psicologia', '/admin/psicologia/atenciones'],
-    ['actividades', '/admin/actividades/calendario'], ['reservas', '/admin/solicitudes'], ['usuarios', '/admin/profesores'], ['configuracion', '/admin/configuracion']]
+    ['actividades', '/admin/actividades/calendario'], ['documentos', '/admin/documentos/instrumentos'], ['reservas', '/admin/solicitudes'], ['usuarios', '/admin/profesores'], ['configuracion', '/admin/configuracion']]
   return order.find(([key]) => canSee(user, key))?.[1] || '/admin/perfil'
 }

@@ -36,6 +36,10 @@ import StudentsPage from './pages/attendance/Students'
 import QrCodesPage from './pages/attendance/QrCodes'
 import AttendanceHistory from './pages/attendance/AttendanceHistory'
 import AttendanceReports from './pages/attendance/AttendanceReports'
+import InstrumentsPage from './pages/documents/Instruments'
+import OrganizationPage from './pages/documents/Organization'
+import ExternalDocsPage from './pages/documents/ExternalDocs'
+import AdminDocsPage from './pages/documents/AdminDocs'
 import ParentLogin from './pages/parents/ParentLogin'
 import ParentPortal from './pages/parents/ParentPortal'
 
@@ -136,6 +140,11 @@ function Gate() {
             <Route path="/admin/actividades" element={<Navigate to="/admin/actividades/calendario" replace />} />
             <Route path="/admin/actividades/calendario" element={<ActivitiesCalendar />} />
             <Route path="/admin/actividades/programadas" element={<ActivitiesList />} />
+            <Route path="/admin/documentos" element={<Navigate to="/admin/documentos/instrumentos" replace />} />
+            <Route path="/admin/documentos/instrumentos" element={<InstrumentsPage />} />
+            <Route path="/admin/documentos/organizacion" element={<OrganizationPage />} />
+            <Route path="/admin/documentos/externos" element={<ExternalDocsPage />} />
+            <Route path="/admin/documentos/administrativos" element={<AdminDocsPage />} />
             {/* Old addresses of the module. */}
             <Route path="/admin/psicologia/citas" element={<Navigate to="/admin/psicologia/seguimiento" replace />} />
             <Route path="/admin/profesores/registrar" element={<Navigate to="/admin/docentes" replace />} />

@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   AlertTriangle,
+  BookOpen,
+  FileStack,
+  Inbox,
+  Network,
   BarChart3,
   CalendarClock,
   CalendarDays,
@@ -110,6 +114,16 @@ const adminNav = [
     children: [
       { to: '/admin/actividades/calendario', label: 'Calendario institucional', icon: CalendarDays },
       { to: '/admin/actividades/programadas', label: 'Actividades programadas', icon: CalendarRange },
+    ],
+  },
+  {
+    label: 'Gestión Documental',
+    icon: FileStack,
+    children: [
+      { to: '/admin/documentos/instrumentos', label: '1. Instrumentos de gestión', icon: BookOpen },
+      { to: '/admin/documentos/organizacion', label: '2. Organización institucional', icon: Network },
+      { to: '/admin/documentos/externos', label: '3. Documentos de entidades externas', icon: Inbox },
+      { to: '/admin/documentos/administrativos', label: '4. Documentos administrativos', icon: FolderOpen },
     ],
   },
   {

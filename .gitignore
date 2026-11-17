@@ -28,3 +28,6 @@ dist-ssr
 
 # Copias de seguridad de la base de datos
 server/backups
+
+# PDF de gestión documental (datos de la institución)
+server/document-files

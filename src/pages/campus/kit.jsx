@@ -139,6 +139,17 @@ export function Pill({ value, className }) {
     Entregado: 'ok',
     'No disponible': 'bad',
     Concluido: 'ok',
+    // Gestión documental
+    Vigente: 'ok',
+    'En elaboración': 'warn',
+    'En actualización': 'warn',
+    'No vigente': 'neutral',
+    Recibido: 'brand',
+    Atendido: 'ok',
+    Archivado: 'neutral',
+    Vencido: 'bad',
+    'En trámite': 'warn',
+    Anulado: 'neutral',
   }
   const labels = {
     registrada: 'Registrada',
