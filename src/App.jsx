@@ -24,8 +24,6 @@ import PsychologyAppointments from './pages/psychology/Appointments'
 import PsychologyReferrals from './pages/psychology/Referrals'
 import PsychologyReports from './pages/psychology/Reports'
 import PsychologyStudents from './pages/psychology/AttendedStudents'
-import ActivitiesCalendar from './pages/activities/CalendarView'
-import ActivitiesList from './pages/activities/ActivitiesList'
 import { HistoryPage, IncidentsPage } from './pages/campus/Incidents'
 import { MaintenancePage, PartsPage } from './pages/campus/Maintenance'
 import { FixedHoursPage } from './pages/campus/Reports'
@@ -137,9 +135,8 @@ function Gate() {
             <Route path="/admin/psicologia/seguimiento" element={<PsychologyAppointments />} />
             <Route path="/admin/psicologia/derivaciones" element={<PsychologyReferrals />} />
             <Route path="/admin/psicologia/reportes" element={<PsychologyReports />} />
-            <Route path="/admin/actividades" element={<Navigate to="/admin/actividades/calendario" replace />} />
-            <Route path="/admin/actividades/calendario" element={<ActivitiesCalendar />} />
-            <Route path="/admin/actividades/programadas" element={<ActivitiesList />} />
+            {/* The activities section was removed: its calendar opens from Organización institucional. */}
+            <Route path="/admin/actividades/*" element={<Navigate to="/admin/documentos/organizacion" replace />} />
             <Route path="/admin/documentos" element={<Navigate to="/admin/documentos/instrumentos" replace />} />
             <Route path="/admin/documentos/instrumentos" element={<InstrumentsPage />} />
             <Route path="/admin/documentos/organizacion" element={<OrganizationPage />} />

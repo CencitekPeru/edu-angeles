@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound, Pencil, RotateCcw, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundCheck, UserRoundX } from 'lucide-react'
+import { ChevronLeft, ChevronRight, KeyRound, Pencil, Plus, RotateCcw, Search, ShieldCheck, Trash2, UserPlus, UserRound, UserRoundCheck, UserRoundX } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -38,8 +38,13 @@ function ContactFields({ value, onChange }) {
 const ROLE_ORDER = { admin: 0, director: 1, auxiliar: 2, psicologo: 3, teacher: 5 }
 
 /** Role checkboxes: one account can have several roles (e.g. Auxiliar and Psicología); at least one is required. */
-function RolePicker({ value = [], onChange, disabled, teacher }) {
+const ROLES_PER_PAGE = 4
+
+function RolePicker({ value = [], onChange, disabled, teacher, canCreate }) {
   const { customRoles } = useApp()
+  const [creating, setCreating] = useState(false)
+  const [page, setPage] = useState(0)
+  const [query, setQuery] = useState('')
   // Built-in roles plus the ones created in «Roles».
   const ROLE_OPTIONS = [...BUILTIN_ROLES, ...customRoles.map((role) => ({ value: role.key, label: role.label, text: role.description || 'Rol creado con permisos propios.' }))]
   // Teachers always keep «Docente» and may get extra staff roles (not Coordinación).
@@ -50,23 +55,63 @@ function RolePicker({ value = [], onChange, disabled, teacher }) {
     const next = on ? [...value, role] : value.filter((item) => item !== role)
     if (next.length) onChange(options.map((option) => option.value).filter((item) => next.includes(item)))
   }
+  const term = query.trim().toLowerCase()
+  const found = options.filter((option) => !term || `${option.label} ${option.text}`.toLowerCase().includes(term))
+  const pages = Math.max(1, Math.ceil(found.length / ROLES_PER_PAGE))
+  const current = Math.min(page, pages - 1)
+  const shown = found.slice(current * ROLES_PER_PAGE, (current + 1) * ROLES_PER_PAGE)
+  const selected = options.filter((option) => value.includes(option.value))
+
   return (
     <div className="grid gap-2 sm:col-span-2">
       <p className="text-xs text-muted-foreground">Marca uno o varios roles. Los permisos de abajo se suman según los roles marcados.</p>
-      {options.map((option) => {
+      {/* Chosen roles stay visible whatever page is open. */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="font-semibold text-muted-foreground">Seleccionados:</span>
+        {selected.map((option) => <Pill key={option.value} value={option.label} />)}
+      </div>
+      {options.length > ROLES_PER_PAGE && (
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="h-8 pl-8 text-sm" value={query} placeholder="Buscar rol…" onChange={(event) => { setQuery(event.target.value); setPage(0) }} />
+        </div>
+      )}
+      {shown.map((option) => {
         const checked = value.includes(option.value)
         const locked = option.locked || (checked && value.length === 1)
         return (
-          <label key={option.value} className={`flex items-start gap-3 rounded-lg border p-3 text-sm transition-colors ${checked ? 'border-primary bg-slate-50 ring-1 ring-primary dark:bg-muted' : 'border-border hover:bg-muted/50'} ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+          <label key={option.value} className={`flex items-start gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${checked ? 'border-primary bg-slate-50 ring-1 ring-primary dark:bg-muted' : 'border-border hover:bg-muted/50'} ${disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
             <input type="checkbox" name="roles" value={option.value} checked={checked} disabled={disabled || locked} onChange={(event) => toggle(option.value, event.target.checked)}
               className="mt-0.5 size-4 accent-[var(--primary)]" title={option.locked ? 'Los docentes conservan siempre su panel de reservas' : checked && value.length === 1 ? 'El usuario debe tener al menos un rol' : undefined} />
-            <span>
+            <span className="min-w-0">
               <span className="block font-semibold text-foreground">{option.label}</span>
               <span className="block text-xs text-muted-foreground">{option.text}</span>
             </span>
           </label>
         )
       })}
+      {!shown.length && <p className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted-foreground">Ningún rol coincide con «{query}».</p>}
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+          <span>{found.length} {found.length === 1 ? 'rol' : 'roles'}</span>
+          <span className="flex items-center gap-1">
+            <Button type="button" variant="outline" size="icon-sm" disabled={current === 0} onClick={() => setPage(current - 1)} aria-label="Roles anteriores"><ChevronLeft /></Button>
+            <span className="min-w-20 text-center font-medium text-foreground">Página {current + 1} de {pages}</span>
+            <Button type="button" variant="outline" size="icon-sm" disabled={current >= pages - 1} onClick={() => setPage(current + 1)} aria-label="Roles siguientes"><ChevronRight /></Button>
+          </span>
+        </div>
+      )}
+      {canCreate && !disabled && (
+        <>
+          <button type="button" onClick={() => setCreating(true)}
+            className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-primary/40 p-2.5 text-sm font-semibold text-primary transition-colors hover:bg-primary/5">
+            <Plus className="size-4" /> Crear nuevo rol
+          </button>
+          {/* Rendered inside the user form so the two dialogs stack instead of closing each other. */}
+          <RolesManager key={creating ? 'new' : 'idle'} open={creating} onOpenChange={setCreating} startNew
+            onCreated={(role) => { onChange([...value, role]); setQuery(''); setPage(Math.floor(options.length / ROLES_PER_PAGE)) }} />
+        </>
+      )}
     </div>
   )
 }
@@ -202,7 +247,7 @@ export default function Teachers() {
             {canAssign && (
               <Button size="sm" variant="outline" className="gap-2 font-bold" onClick={() => setRolesOpen(true)}>
                 <ShieldCheck className="size-4" />
-                Roles
+                Roles y permisos
               </Button>
             )}
             <Button size="sm" className="gap-2 font-bold" onClick={() => { setNewUser(withRoles(emptyUser, emptyUser.roles)); setError(''); setCreateOpen(true) }}>
@@ -240,7 +285,7 @@ export default function Teachers() {
               <ContactFields value={newUser} onChange={setNewUser} />
             </UserFormSection>
             <UserFormSection icon={<ShieldCheck className="size-4" />} title="Rol y permisos" description="Define qué podrá ver y hacer este usuario.">
-              <RolePicker value={newUser.roles} onChange={(roles) => setNewUser(withRoles(newUser, roles))} />
+              <RolePicker value={newUser.roles} canCreate={canAssign} onChange={(roles) => setNewUser(withRoles(newUser, roles))} />
             </UserFormSection>
             <section className="overflow-hidden rounded-lg border border-border/70 lg:col-span-2">
               <div className="flex items-center gap-2 border-b border-border/60 bg-muted/30 px-3 py-2.5">
@@ -365,7 +410,7 @@ export default function Teachers() {
               </UserFormSection>
               {(
                 <UserFormSection icon={<ShieldCheck className="size-4" />} title="Rol y permisos" description="Define qué podrá ver y hacer este usuario.">
-                  <RolePicker teacher={editing.role === 'teacher'} value={editing.roles} disabled={editing.id === currentUser.id || !canAssign} onChange={(roles) => setEditing(withRoles(editing, roles))} />
+                  <RolePicker teacher={editing.role === 'teacher'} canCreate={canAssign} value={editing.roles} disabled={editing.id === currentUser.id || !canAssign} onChange={(roles) => setEditing(withRoles(editing, roles))} />
                   {editing.id === currentUser.id && <span className="text-xs text-muted-foreground sm:col-span-2">No puedes cambiar tus propios roles.</span>}
                 </UserFormSection>
               )}

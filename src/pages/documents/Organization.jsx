@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { CalendarRange, ClipboardList, Eraser, FileSpreadsheet, Layers, Network, Paperclip, Pencil, Plus, Save, Search, Trash2, UserRound, Users, X } from 'lucide-react'
+import { CalendarDays, CalendarRange, ClipboardList, Eraser, FileSpreadsheet, Layers, Network, Paperclip, Pencil, Plus, Save, Search, Trash2, UserRound, Users, X } from 'lucide-react'
 import { useApp } from '../../context/AppContext'
 import { useCan } from '../../lib/permissions'
+import { canSee } from '../../lib/accessModel'
+import { SCHOOL } from '../../lib/school'
+import ActivitiesCalendar from '../activities/CalendarView'
 import { exportTableXlsx } from '../../lib/exporters'
 import { COMMITTEES, subcommissionsOf } from '../../lib/committees'
 import { CONFORMATION_TYPES, MEMBER_CONDITIONS, MEMBER_LEVELS, MEMBER_POSITIONS, ORG_SCOPES, ORG_STATUS } from '../../lib/documents'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { PageHeader, Panel, Pill, StatCard } from '../campus/kit'
 import {
@@ -119,7 +122,10 @@ function OrgTable({ items, empty, actions }) {
 
 /** «2. Organización institucional»: committees, their commissions and members, with the conformation document. */
 export default function OrganizationPage() {
-  const { toast } = useApp()
+  const { toast, user } = useApp()
+  const [calendarOpen, setCalendarOpen] = useState(false)
+  // The calendar has its own permission («Calendario institucional (actividades)» in the permission table).
+  const showCalendar = canSee(user, 'actividades')
   const canEdit = useCan('documentos')
   const files = useFileActions()
   const [items, loading, reload] = useList('/api/docs/organizations', 'organizations')
@@ -160,6 +166,7 @@ export default function OrganizationPage() {
         description="Comités · Comisiones · Integrantes | Gestión de la estructura organizativa de la institución educativa."
         actions={(
           <>
+            {showCalendar && <Button type="button" variant="outline" onClick={() => setCalendarOpen(true)}><CalendarDays className="text-primary" /> Calendario institucional</Button>}
             <Button type="button" variant="outline" onClick={exportData}><FileSpreadsheet className="text-[#3f7d5c]" /> Exportar Excel</Button>
             {canEdit && <Button type="button" onClick={() => setForm(null)}><Plus /> Registrar organización</Button>}
           </>
@@ -197,6 +204,18 @@ export default function OrganizationPage() {
           )}
         />
       </Panel>
+
+      {showCalendar && (
+        <Dialog open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <DialogContent className="max-h-[96vh] w-[97vw] overflow-y-auto sm:max-w-[1500px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2"><CalendarDays className="size-5 text-primary" /> Calendario institucional</DialogTitle>
+              <DialogDescription>Programación anual de actividades, eventos y fechas importantes de la {SCHOOL.name}.</DialogDescription>
+            </DialogHeader>
+            {calendarOpen && <ActivitiesCalendar embedded />}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {form !== undefined && <OrganizationForm item={form} onClose={() => setForm(undefined)} onSaved={() => { setForm(undefined); reload() }} />}
 

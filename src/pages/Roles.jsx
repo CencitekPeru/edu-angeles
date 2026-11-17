@@ -36,9 +36,10 @@ function summary(perms) {
  * «Roles»: lists built-in and created roles; Coordinación creates roles with their own module permissions,
  * renames or deletes them, and adjusts the permissions of the editable built-in roles.
  */
-export default function RolesManager({ open, onOpenChange }) {
+export default function RolesManager({ open, onOpenChange, startNew = false, onCreated }) {
   const { users, customRoles, refresh, toast } = useApp()
-  const [editing, setEditing] = useState(null)
+  // `startNew` opens straight on the «Nuevo rol» form (from the user form); remount the component to reset it.
+  const [editing, setEditing] = useState(() => (startNew ? { key: null, label: '', description: '', builtin: false, perms: none() } : null))
   const [deleting, setDeleting] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -54,7 +55,7 @@ export default function RolesManager({ open, onOpenChange }) {
     if (!next) { setEditing(null); setError('') }
     onOpenChange(next)
   }
-  const startNew = () => { setError(''); setEditing({ key: null, label: '', description: '', builtin: false, perms: none() }) }
+  const openNew = () => { setError(''); setEditing({ key: null, label: '', description: '', builtin: false, perms: none() }) }
   const startEdit = (row) => { setError(''); setEditing({ ...row, perms: { ...roleDefaults(row.key) } }) }
 
   async function save(event) {
@@ -69,7 +70,9 @@ export default function RolesManager({ open, onOpenChange }) {
     if (!result.ok) { setError(result.error || 'No se pudo guardar el rol.'); return }
     await refresh()
     toast(key ? `Rol «${label}» actualizado.` : `Rol «${label}» creado. Ya puedes asignarlo a los usuarios.`)
-    setEditing(null)
+    if (!key && result.role) onCreated?.(result.role.key)
+    if (startNew && !key) close(false)
+    else setEditing(null)
   }
 
   async function remove() {
@@ -104,7 +107,7 @@ export default function RolesManager({ open, onOpenChange }) {
           {!editing && (
             <div className="space-y-3">
               <div className="flex justify-end">
-                <Button size="sm" className="gap-2 font-bold" onClick={startNew}><Plus className="size-4" /> Nuevo rol</Button>
+                <Button size="sm" className="gap-2 font-bold" onClick={openNew}><Plus className="size-4" /> Nuevo rol</Button>
               </div>
               <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
                 {rows.map((row) => {
@@ -167,7 +170,9 @@ export default function RolesManager({ open, onOpenChange }) {
               </div>
               {error && <p role="alert" className="rounded-lg bg-destructive/10 p-2.5 text-xs font-semibold text-destructive">{error}</p>}
               <DialogFooter className="sticky bottom-0 -mx-6 border-t border-border/70 bg-background px-6 py-3">
-                <Button type="button" variant="outline" onClick={() => { setEditing(null); setError('') }}><ArrowLeft className="size-4" /> Volver</Button>
+                {startNew && !editing.key
+                  ? <Button type="button" variant="outline" onClick={() => close(false)}>Cancelar</Button>
+                  : <Button type="button" variant="outline" onClick={() => { setEditing(null); setError('') }}><ArrowLeft className="size-4" /> Volver</Button>}
                 <Button type="submit" disabled={saving}>{saving ? 'Guardando…' : editing.key ? 'Guardar cambios' : 'Crear rol'}</Button>
               </DialogFooter>
             </form>

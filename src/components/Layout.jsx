@@ -9,8 +9,6 @@ import {
   BarChart3,
   CalendarClock,
   CalendarDays,
-  CalendarRange,
-  Flag,
   ChevronDown,
   ChevronRight,
   Eye,
@@ -106,14 +104,6 @@ const adminNav = [
           { to: '/admin/psicologia/reportes', label: 'Reportes', icon: BarChart3 },
         ],
       },
-    ],
-  },
-  {
-    label: 'Gestión de Actividades',
-    icon: Flag,
-    children: [
-      { to: '/admin/actividades/calendario', label: 'Calendario institucional', icon: CalendarDays },
-      { to: '/admin/actividades/programadas', label: 'Actividades programadas', icon: CalendarRange },
     ],
   },
   {

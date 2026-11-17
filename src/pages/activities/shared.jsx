@@ -22,11 +22,6 @@ export const RESOURCE_CATEGORIES = ['Material', 'Equipo', 'Ambiente', 'Presupues
 export const RESOURCE_STATUS = ['Solicitado', 'Aprobado', 'Entregado', 'No disponible']
 export const ACTIVE_STATUS = ['Planificada', 'En preparación', 'En ejecución']
 
-export const ACT = {
-  calendar: '/admin/actividades/calendario',
-  list: '/admin/actividades/programadas',
-}
-export const activityLink = (id) => `${ACT.list}?actividad=${id}`
 
 /* -------------------------------------------------------------- helpers */
 

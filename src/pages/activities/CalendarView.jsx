@@ -188,8 +188,11 @@ function ActivityRow({ item, onOpen, onEdit, onDelete, canEdit }) {
 
 /* ----------------------------------------------------------------- page */
 
-/** Calendario institucional: month, week, list and year views of every activity. */
-export default function ActivitiesCalendar() {
+/**
+ * Calendario institucional: month, week, list and year views of every activity.
+ * `embedded`: shown inside a dialog (Organización institucional), so it has no page header.
+ */
+export default function ActivitiesCalendar({ embedded = false }) {
   const { toast } = useApp()
   const canEdit = useCan('actividades')
   const today = todayLima()
@@ -233,18 +236,21 @@ export default function ActivitiesCalendar() {
   const rowProps = { onOpen: setOpened, onEdit: setEditing, onDelete: setDeleting, canEdit }
   const sidePanel = view === 'month' || view === 'week'
 
+  const yearPicker = (
+    <label className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold shadow-xs">
+      <CalendarDays className="size-4 text-muted-foreground" />
+      Año escolar:
+      <select value={y} onChange={(event) => setCursor(`${event.target.value}-${pad(m)}-01`)} className="bg-transparent font-bold outline-none" aria-label="Año escolar">
+        {years.map((year) => <option key={year} value={year}>{year}</option>)}
+      </select>
+    </label>
+  )
+
   return (
     <div className="space-y-4">
-      <PageHeader icon={CalendarDays} title={`Calendario Institucional ${y}`} description={`Programación anual de actividades, eventos y fechas importantes de la ${SCHOOL.name}.`}
-        actions={(
-          <label className="flex h-10 items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-semibold shadow-xs">
-            <CalendarDays className="size-4 text-muted-foreground" />
-            Año escolar:
-            <select value={y} onChange={(event) => setCursor(`${event.target.value}-${pad(m)}-01`)} className="bg-transparent font-bold outline-none" aria-label="Año escolar">
-              {years.map((year) => <option key={year} value={year}>{year}</option>)}
-            </select>
-          </label>
-        )} />
+      {!embedded && (
+        <PageHeader icon={CalendarDays} title={`Calendario Institucional ${y}`} description={`Programación anual de actividades, eventos y fechas importantes de la ${SCHOOL.name}.`} actions={yearPicker} />
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-xs">
@@ -264,7 +270,10 @@ export default function ActivitiesCalendar() {
           ))}
         </div>
 
-        {canEdit ? <Button type="button" onClick={() => setCreatingOn(cursor.slice(0, 7) === today.slice(0, 7) ? today : cursor)}><Plus /> Nueva actividad</Button> : <span />}
+        <div className="flex flex-wrap items-center gap-2">
+          {embedded && yearPicker}
+          {canEdit ? <Button type="button" onClick={() => setCreatingOn(cursor.slice(0, 7) === today.slice(0, 7) ? today : cursor)}><Plus /> Nueva actividad</Button> : <span />}
+        </div>
       </div>
 
       <div className={cn('grid gap-4', sidePanel && 'xl:grid-cols-[minmax(0,1fr)_400px]')}>
