@@ -9,6 +9,7 @@ import {
   parseISODate,
   schoolWeek,
   todayISO,
+  nowLima,
   toMinutes,
 } from '../lib/time'
 import { Button } from '@/components/ui/button'
@@ -47,8 +48,7 @@ function hours() {
 }
 
 function Blocks({ items, users, preview, showNow = false }) {
-  const now = new Date()
-  const nowMins = now.getHours() * 60 + now.getMinutes()
+  const nowMins = nowLima().minutes
   return (
     <div className="relative" style={{ height: HEIGHT }}>
       {hours().map((hour) => (
@@ -278,8 +278,7 @@ function DayColumn({ date, requests, users, canReserve, onReserve }) {
   const parts = dayParts(date)
   const today = date === todayISO()
   const bookable = canReserve && date >= todayISO()
-  const now = new Date()
-  const minute = now.getHours() * 60 + now.getMinutes()
+  const minute = nowLima().minutes
 
   return (
     <div className={`rounded-xl border p-2 transition-colors ${today ? 'border-primary/40 bg-primary/5' : 'border-border/70 bg-muted/20'}`}>

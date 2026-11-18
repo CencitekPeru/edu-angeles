@@ -4,7 +4,8 @@ import {
   formatMinutes,
   isWeekend,
   rangesOverlap,
-  slotDate,
+  isPastTime,
+  nowLima,
   todayISO,
   toISODate,
   toMinutes,
@@ -65,7 +66,7 @@ export function validateRequest(requests, input, { ignoreId, teacherId } = {}) {
   else if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) errors.date = 'Fecha inválida.'
   else if (isWeekend(date)) errors.date = 'La sala abre de lunes a viernes.'
   else if (date < todayISO()) errors.date = 'No puedes reservar una fecha que ya pasó.'
-  else if (date > toISODate(addDays(new Date(), LAB.horizonDays))) {
+  else if (date > toISODate(addDays(todayISO(), LAB.horizonDays))) {
     errors.date = `Solo puedes reservar con hasta ${LAB.horizonDays} días de anticipación.`
   }
 
@@ -85,8 +86,9 @@ export function validateRequest(requests, input, { ignoreId, teacherId } = {}) {
       errors.endTime = `La reserva mínima es de ${LAB.minMinutes} minutos.`
     } else if (e - s > LAB.maxMinutes) {
       errors.endTime = 'La reserva máxima es de 3 horas.'
-    } else if (date === todayISO() && !errors.date && slotDate(date, start).getTime() <= Date.now()) {
-      errors.endTime = 'Ese horario ya pasó. Elige una hora más tarde.'
+    } else if (!errors.date && isPastTime(date, start)) {
+      // Compared with the current time in Lima (minute precision), whatever the server's time zone.
+      errors.endTime = `Ese horario ya pasó (ahora son las ${nowLima().time} en Lima). Elige una hora más tarde.`
     }
   }
 

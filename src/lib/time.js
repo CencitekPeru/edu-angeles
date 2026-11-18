@@ -8,6 +8,24 @@ export const LAB = {
   horizonDays: 45,
 }
 
+/** Time zone of the school. Every «now» is taken here, never from the server's or browser's own clock settings. */
+export const TIME_ZONE = 'America/Lima'
+
+/**
+ * Current date and time in Lima: { date: 'YYYY-MM-DD', time: 'HH:MM', minutes, weekday }.
+ * The server may run in UTC (or another zone) and a browser may have a wrong zone; this is always Peru's time.
+ */
+export function nowLima(at = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(at).map((part) => [part.type, part.value]),
+  )
+  const date = `${parts.year}-${parts.month}-${parts.day}`
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute)
+  return { date, time: `${parts.hour}:${parts.minute}`, minutes, weekday: new Date(`${date}T12:00:00`).getDay() }
+}
+
 export function toMinutes(hhmm) {
   const [h, m] = hhmm.split(':').map(Number)
   return h * 60 + m
@@ -60,8 +78,9 @@ export function addDays(date, n) {
   return d
 }
 
+/** Today's date in Lima. */
 export function todayISO() {
-  return toISODate(new Date())
+  return nowLima().date
 }
 
 export function isWeekend(iso) {
@@ -79,10 +98,9 @@ export function startOfWeek(input) {
 }
 
 export function nextBookableDate() {
-  const now = new Date()
-  let d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0, 0)
-  const nowMins = now.getHours() * 60 + now.getMinutes()
-  if (nowMins >= 17 * 60) d = addDays(d, 1)
+  const now = nowLima()
+  let d = parseISODate(now.date)
+  if (now.minutes >= 17 * 60) d = addDays(d, 1)
   while (d.getDay() === 0 || d.getDay() === 6) d = addDays(d, 1)
   return toISODate(d)
 }
@@ -149,8 +167,16 @@ export function slotDate(iso, hhmm) {
   return d
 }
 
+/** Whether a time of a day (Lima) has already passed: earlier days, or today at or before the current minute. */
+export function isPastTime(iso, hhmm) {
+  const now = nowLima()
+  return iso < now.date || (iso === now.date && toMinutes(hhmm) <= now.minutes)
+}
+
+/** Whether a reservation already ended (its end time, in Lima, is behind us). */
 export function isPastEnd(iso, end) {
-  return slotDate(iso, end).getTime() < Date.now()
+  const now = nowLima()
+  return iso < now.date || (iso === now.date && toMinutes(end) < now.minutes)
 }
 
 export function rangesOverlap(a1, a2, b1, b2) {
@@ -158,7 +184,7 @@ export function rangesOverlap(a1, a2, b1, b2) {
 }
 
 export function greeting(name) {
-  const h = new Date().getHours()
+  const h = Math.floor(nowLima().minutes / 60)
   const hello = h < 12 ? 'Buenos días' : h < 19 ? 'Buenas tardes' : 'Buenas noches'
   return `${hello}, ${name.trim().split(/\s+/)[0]}`
 }

@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken'
 import { randomBytes } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
-import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes } from '../src/lib/time.js'
+import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes, todayISO } from '../src/lib/time.js'
 import { config } from './config.js'
 import { campusRouter, ensureCampus } from './campus.js'
 import { adminRouter } from './admin.js'
@@ -71,8 +71,10 @@ app.get('/api/public/today', wrap(async (_req, res) => {
   const [rows] = await pool.query(
     `SELECT grade, section, start_time, end_time, status, date
      FROM requests
-     WHERE date = CURDATE() AND status IN ('pending', 'approved')
+     WHERE date = ? AND status IN ('pending', 'approved')
      ORDER BY start_time`,
+    // Today in Lima (MySQL's CURDATE() follows the database server's clock, often UTC).
+    [todayISO()],
   )
   res.json({
     ok: true,
