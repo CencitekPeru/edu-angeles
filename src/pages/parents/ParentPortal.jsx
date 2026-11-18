@@ -185,7 +185,8 @@ export default function ParentPortal() {
 
   const childCards = (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {me.children.map((item) => (
+      {/* `me` is still null on the first render, before the guardian's data arrives. */}
+      {(me?.children || []).map((item) => (
         <button key={item.id} type="button" onClick={() => setChildId(item.id)} aria-pressed={item.id === childId}
           className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left shadow-sm transition', item.id === childId ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/40')}>
           {item.photo ? <img src={item.photo} alt="" className="size-14 rounded-lg object-cover" /> : <span className="flex size-14 items-center justify-center rounded-lg bg-slate-200 text-slate-500 dark:bg-slate-700"><UserRound className="size-7" /></span>}
