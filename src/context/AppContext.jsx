@@ -115,9 +115,11 @@ export function AppProvider({ children }) {
     const result = await api('/api/auth/login', { method: 'POST', body: { email, dni, remember } })
     if (!result.ok) return result
     setToken(result.token, remember)
-    setUser(result.user)
     setOffline(false)
+    // Role permissions and created roles must be loaded before the user is set:
+    // the pages and the landing route are decided from them as soon as there is a user.
     await refresh()
+    setUser(result.user)
     return result
   }
 

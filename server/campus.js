@@ -999,7 +999,7 @@ export function campusRouter() {
     const profilePhoto = `/api/uploads/${file.filename}`
     await getPool().query('UPDATE users SET profile_photo = ? WHERE id = ?', [profilePhoto, req.user.id])
     const [rows] = await getPool().query(
-      'SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active FROM users WHERE id = ?',
+      'SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?',
       [req.user.id],
     )
     res.json({ ok: true, user: mapUser(rows[0]) })

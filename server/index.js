@@ -17,7 +17,7 @@ import { ensureParents, parentsRouter } from './parents.js'
 import { documentsRouter, ensureDocuments } from './documents.js'
 import { ensureGuardianMeetings, guardianMeetingsRouter } from './guardianMeetings.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
-import { EDITABLE_ROLES, roleOriginal, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, sameActions, setRolePermissions } from '../src/lib/accessModel.js'
+import { EDITABLE_ROLES, permissionDiff, roleOriginal, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, setRolePermissions } from '../src/lib/accessModel.js'
 
 /** Role permissions edited in «Roles y permisos»: only the levels that differ from the built-in defaults are stored. */
 async function ensureRoles() {
@@ -401,7 +401,7 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes],
   )
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
   const user = mapUser(rows[0])
   res.status(201).json({ ok: true, user, ...(role === 'teacher' ? { teacher: user } : {}) })
 }))
@@ -461,7 +461,7 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
     const [rows] = await pool.query('SELECT id FROM users WHERE id = ?', [req.params.id])
     if (!rows.length) return res.status(404).json({ ok: false, error: 'El usuario no existe.' })
   }
-  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [req.params.id])
+  const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [req.params.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
@@ -490,7 +490,8 @@ app.put('/api/roles/:role/permissions', requireAuth, wrap(async (req, res) => {
   const { role } = req.params
   if (!EDITABLE_ROLES.includes(role)) return res.status(400).json({ ok: false, error: 'Los permisos de este rol no se pueden modificar.' })
   const actions = req.body.permissions === null ? null : parsePermissions(req.body.permissions)
-  const changed = actions ? Object.fromEntries(Object.entries(actions).filter(([key, list]) => !sameActions(roleOriginal(role)[key], list))) : {}
+  // Whole modules (with all their views) that differ from the role's original permissions.
+  const changed = actions ? permissionDiff({ ...roleOriginal(role), ...actions }, roleOriginal(role)) : {}
   if (Object.keys(changed).length) {
     await pool.query('INSERT INTO role_permissions (role, permissions, updated_by) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE permissions = VALUES(permissions), updated_by = VALUES(updated_by)',
       [role, JSON.stringify(changed), req.user.id])

@@ -242,6 +242,21 @@ export const canSee = (user, key) => can(user, key, 'view')
 /** Any write (create, edit or delete) in the module. */
 export const canChange = (user, key) => levelOf(user, key) === 'edit'
 
+/**
+ * What to store of a permission map: only the modules that differ from `base`, but each one complete
+ * (the module and all its views), so an unchecked view is saved too and never falls back to «visible».
+ */
+export function permissionDiff(perms, base) {
+  const diff = {}
+  for (const module of MODULES) {
+    const keys = [module.key, ...viewsOf(module.key).map((view) => view.key)]
+    if (keys.some((key) => !sameActions(perms[key] || [], base[key] || []))) {
+      for (const key of keys) diff[key] = normalizeActions(perms[key] || [], key)
+    }
+  }
+  return diff
+}
+
 /** View (screen) of a panel route, or null when the route has no separate view. */
 export function viewForPath(path) {
   return VIEWS.find((view) => view.exact?.includes(path) || view.paths?.some((base) => path === base || path.startsWith(`${base}/`)))?.key || null

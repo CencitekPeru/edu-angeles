@@ -10,7 +10,7 @@ import { Avatar, PageHeader } from '../components/ui'
 import { Pill, Table } from './campus/kit'
 import { roleLabel, useCan } from '../lib/permissions'
 import { api } from '../lib/api'
-import { PERMISSION_KEYS, accessOf, primaryRole, roleSetDefaults, rolesOf, sameActions } from '../lib/accessModel'
+import { PERMISSION_KEYS, accessOf, permissionDiff, primaryRole, roleSetDefaults, rolesOf, sameActions } from '../lib/accessModel'
 import PermissionGrid from '../components/PermissionGrid'
 import RolesManager, { BUILTIN_ROLES } from './Roles'
 
@@ -171,7 +171,7 @@ export default function Teachers() {
     const role = mainRole || primaryRole(roles)
     if (!canAssign || userId === currentUser.id) return true
     const base = roleSetDefaults(roles)
-    const custom = Object.fromEntries(PERMISSION_KEYS.filter((key) => !sameActions(perms[key], base[key])).map((key) => [key, perms[key]]))
+    const custom = permissionDiff(perms, base)
     const result = await api(`/api/users/${userId}/permissions`, { method: 'PATCH', body: { permissions: Object.keys(custom).length ? custom : null, roles: roles.filter((item) => item !== role) } })
     if (!result.ok) { setError(result.error || 'Se guardaron los datos, pero no los permisos.'); return false }
     await refresh()
