@@ -145,6 +145,36 @@ export async function guardianDebt(guardianId) {
   return { fines, pendingCount: pending.length, pendingAmount: Math.round(pending.reduce((total, fine) => total + fine.amount, 0) * 100) / 100 }
 }
 
+/**
+ * Meetings of a guardian for the parent portal: those already held (with their attendance)
+ * and the upcoming ones they are called to (through any of their children).
+ */
+export async function guardianMeetingsFor(guardianId) {
+  const db = getPool()
+  const [held] = await db.query(
+    `SELECT m.id, m.title, m.type, m.place, DATE_FORMAT(m.date, '%Y-%m-%d') AS day, TIME_FORMAT(m.start_time, '%H:%i') AS hour, a.status
+       FROM guardian_meeting_attendance a JOIN guardian_meetings m ON m.id = a.meeting_id
+      WHERE a.guardian_id = ? ORDER BY m.date DESC LIMIT 30`,
+    [guardianId],
+  )
+  const [upcoming] = await db.query(
+    `SELECT DISTINCT m.id, m.title, m.type, m.place, m.description, DATE_FORMAT(m.date, '%Y-%m-%d') AS day, TIME_FORMAT(m.start_time, '%H:%i') AS hour, m.fine_amount
+       FROM guardian_meetings m
+       JOIN guardian_students gs ON gs.guardian_id = ?
+       JOIN students s ON s.id = gs.student_id AND s.active = 1
+      WHERE m.status = 'Programada' AND m.date >= ?
+        AND (m.scope_level = '' OR BINARY m.scope_level = BINARY s.level) AND (m.scope_grade = '' OR BINARY m.scope_grade = BINARY s.grade)
+        AND (m.scope_section = '' OR BINARY m.scope_section = BINARY s.section)
+      ORDER BY day, hour`,
+    // BINARY: these tables and «students» may use different collations; the values are compared exactly.
+    [guardianId, nowLima().date],
+  )
+  return {
+    held: held.map((row) => ({ id: row.id, title: row.title, type: row.type, place: row.place || '', date: row.day, time: row.hour || '', status: row.status })),
+    upcoming: upcoming.map((row) => ({ id: row.id, title: row.title, type: row.type, place: row.place || '', description: row.description || '', date: row.day, time: row.hour || '', fineAmount: Number(row.fine_amount || 0) })),
+  }
+}
+
 /* --------------------------------------------------------------- router */
 
 export function guardianMeetingsRouter() {

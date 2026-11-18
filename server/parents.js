@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken'
 import { config } from './config.js'
 import { getPool } from './db.js'
 import { getSetting, isDate, mapRecord, nowLima, schoolDays } from './attendance.js'
-import { guardianDebt } from './guardianMeetings.js'
+import { guardianDebt, guardianMeetingsFor } from './guardianMeetings.js'
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 
@@ -147,7 +147,7 @@ export function parentsRouter() {
   router.get('/api/parents/me', requireGuardian, wrap(async (req, res) => {
     const [children] = await getPool().query(`${CHILD_SELECT} WHERE gs.guardian_id = ? ORDER BY s.last_names, s.first_names`, [nowLima().date, req.guardian.id])
     // Their fines for missed meetings: what they owe is shown as soon as they sign in.
-    const debt = await guardianDebt(req.guardian.id)
+    const [debt, meetings] = await Promise.all([guardianDebt(req.guardian.id), guardianMeetingsFor(req.guardian.id)])
     res.json({
       ok: true,
       guardian: mapGuardian(req.guardian),
@@ -155,8 +155,9 @@ export function parentsRouter() {
       debt: {
         pendingAmount: debt.pendingAmount,
         pendingCount: debt.pendingCount,
-        fines: debt.fines.slice(0, 20).map(({ id, concept, amount, status, issuedOn, paidOn, receipt }) => ({ id, concept, amount, status, issuedOn, paidOn, receipt })),
+        fines: debt.fines.slice(0, 50).map(({ id, concept, amount, status, issuedOn, paidOn, receipt, note }) => ({ id, concept, amount, status, issuedOn, paidOn, receipt, note: status === 'Exonerada' ? note : '' })),
       },
+      meetings,
     })
   }))
 
