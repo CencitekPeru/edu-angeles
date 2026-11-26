@@ -68,6 +68,8 @@ export async function initDb() {
     ['gender', "VARCHAR(20) NOT NULL DEFAULT ''"],
     ['phone', "VARCHAR(30) NOT NULL DEFAULT ''"],
     ['employment_condition', "VARCHAR(40) NOT NULL DEFAULT ''"],
+    // Level a teacher works in: Primaria / Secundaria.
+    ['teaching_level', "VARCHAR(20) NOT NULL DEFAULT ''"],
     ['notes', "VARCHAR(500) NOT NULL DEFAULT ''"],
     // Custom module permissions (JSON); NULL = the role's defaults.
     ['permissions', 'TEXT NULL'],
@@ -213,6 +215,7 @@ export function mapUser(row) {
       gender: row.gender || '',
       phone: row.phone || '',
       employmentCondition: row.employment_condition || '',
+      teachingLevel: row.teaching_level || '',
       notes: row.notes || '',
       createdOn: row.created_on ? String(row.created_on).slice(0, 10) : '',
     } : {}),

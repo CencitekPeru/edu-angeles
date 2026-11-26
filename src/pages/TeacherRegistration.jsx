@@ -33,9 +33,10 @@ const AREAS = [
   'Personal Social', 'Educación Física', 'Arte y Cultura', 'Inglés', 'Educación para el Trabajo', 'Educación Religiosa',
   'Educación Primaria (aula)', 'Computación e Informática', 'Tutoría', 'Psicología', 'Otro',
 ]
+const TEACHING_LEVELS = ['Primaria', 'Secundaria']
 const CONDITIONS = ['Nombrado', 'Contratado', 'Reasignado', 'Destacado', 'Practicante', 'Otro']
 const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
-const emptyForm = { firstNames: '', lastNames: '', dni: '', birthDate: '', gender: '', phone: '', area: '', otherArea: '', employmentCondition: '', email: '', notes: '' }
+const emptyForm = { firstNames: '', lastNames: '', dni: '', birthDate: '', gender: '', phone: '', area: '', otherArea: '', employmentCondition: '', teachingLevel: '', email: '', notes: '' }
 
 function Section({ icon: Icon, title, children }) {
   return (
@@ -89,6 +90,7 @@ function teacherToForm(teacher) {
     area,
     otherArea: area === 'Otro' ? teacher.subject || '' : '',
     employmentCondition: teacher.employmentCondition || '',
+    teachingLevel: teacher.teachingLevel || '',
     email: teacher.email || '',
     notes: teacher.notes || '',
   }
@@ -108,7 +110,7 @@ export default function TeacherRegistration() {
   const [deleting, setDeleting] = useState(false)
   const [deactivating, setDeactivating] = useState(false)
 
-  const [filters, setFilters] = useState({ q: '', area: '', condition: '', status: '' })
+  const [filters, setFilters] = useState({ q: '', area: '', level: '', condition: '', status: '' })
 
   const teachers = users
     .filter((user) => user.role === 'teacher')
@@ -118,12 +120,13 @@ export default function TeacherRegistration() {
   const visibleTeachers = teachers.filter((teacher) => {
     if (term && ![teacher.name, teacher.firstNames, teacher.lastNames, teacher.dni, teacher.email].some((value) => String(value || '').toLowerCase().includes(term))) return false
     if (filters.area && teacher.subject !== filters.area) return false
+    if (filters.level && teacher.teachingLevel !== filters.level) return false
     if (filters.condition && teacher.employmentCondition !== filters.condition) return false
     if (filters.status === 'Habilitado' && !teacher.active) return false
     if (filters.status === 'Inactivo' && teacher.active) return false
     return true
   })
-  const hasFilters = Boolean(term || filters.area || filters.condition || filters.status)
+  const hasFilters = Boolean(term || filters.area || filters.level || filters.condition || filters.status)
   const set = (patch) => setForm((current) => ({ ...current, ...patch }))
 
   function openNew() {
@@ -146,6 +149,7 @@ export default function TeacherRegistration() {
     if (!form.firstNames.trim() || !form.lastNames.trim()) return setError('Escribe los nombres y apellidos del docente.')
     if (!/^\d{8}$/.test(form.dni)) return setError('El DNI debe tener exactamente 8 dígitos.')
     if (!subject || subject.length < 3) return setError('Selecciona el área o especialidad.')
+    if (!form.teachingLevel) return setError('Selecciona el nivel: Primaria o Secundaria.')
     if (!form.employmentCondition) return setError('Selecciona la condición laboral.')
     setSaving(true)
     setError('')
@@ -158,6 +162,7 @@ export default function TeacherRegistration() {
       phone: form.phone,
       subject,
       employmentCondition: form.employmentCondition,
+      teachingLevel: form.teachingLevel,
       email: form.email.trim(),
       notes: form.notes,
     }
@@ -206,12 +211,13 @@ export default function TeacherRegistration() {
       />
 
       <Panel title="Padrón de docentes registrados" icon={Users}>
-        <Filters>
+        <Filters className="xl:grid-cols-5">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input className="pl-8" placeholder="Buscar por nombre, DNI o correo" aria-label="Buscar docente" value={filters.q} onChange={(e) => setFilters({ ...filters, q: e.target.value })} />
           </div>
           <Choice value={filters.area || 'todas'} onChange={(value) => setFilters({ ...filters, area: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las áreas' }, ...areaOptions.map((item) => ({ value: item, label: item }))]} />
+          <Choice value={filters.level || 'todos'} onChange={(value) => setFilters({ ...filters, level: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los niveles' }, ...TEACHING_LEVELS.map((item) => ({ value: item, label: item }))]} />
           <Choice value={filters.condition || 'todas'} onChange={(value) => setFilters({ ...filters, condition: value === 'todas' ? '' : value })} options={[{ value: 'todas', label: 'Todas las condiciones' }, ...CONDITIONS.map((item) => ({ value: item, label: item }))]} />
           <Choice value={filters.status || 'todos'} onChange={(value) => setFilters({ ...filters, status: value === 'todos' ? '' : value })} options={[{ value: 'todos', label: 'Todos los estados' }, { value: 'Habilitado', label: 'Habilitado' }, { value: 'Inactivo', label: 'Inactivo' }]} />
         </Filters>
@@ -227,6 +233,7 @@ export default function TeacherRegistration() {
             ) },
             { key: 'dni', label: 'DNI', render: (teacher) => teacher.dni || '—' },
             { key: 'subject', label: 'Área / Especialidad' },
+            { key: 'teachingLevel', label: 'Nivel', render: (teacher) => teacher.teachingLevel || '—' },
             { key: 'employmentCondition', label: 'Condición laboral', render: (teacher) => teacher.employmentCondition || '—' },
             { key: 'phone', label: 'Teléfono', render: (teacher) => teacher.phone || '—' },
             { key: 'requests', label: 'Solicitudes', render: (teacher) => <span className="text-xs font-semibold">{requests.filter((request) => request.teacherId === teacher.id).length}</span> },
@@ -273,11 +280,12 @@ export default function TeacherRegistration() {
             </Section>
 
             <Section icon={GraduationCap} title="Información profesional">
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-3">
                 <F label="Área / Especialidad" required>
                   <IconField icon={Layers} as="select" value={form.area} onChange={(e) => set({ area: e.target.value })} options={pick('Seleccione el área o especialidad', AREAS)} />
                   {form.area === 'Otro' && <IconField icon={Layers} value={form.otherArea} onChange={(e) => set({ otherArea: e.target.value })} placeholder="Especifique el área" maxLength={120} />}
                 </F>
+                <F label="Nivel" required><IconField icon={GraduationCap} as="select" value={form.teachingLevel} onChange={(e) => set({ teachingLevel: e.target.value })} options={pick('Seleccione el nivel', TEACHING_LEVELS)} /></F>
                 <F label="Condición laboral" required><IconField icon={Briefcase} as="select" value={form.employmentCondition} onChange={(e) => set({ employmentCondition: e.target.value })} options={pick('Seleccione la condición', CONDITIONS)} /></F>
               </div>
             </Section>

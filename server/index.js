@@ -352,9 +352,10 @@ app.post('/api/requests/:id/decide', requireAuth, requireAdmin, wrap(async (req,
   }
 }))
 
-const USER_PROFILE_COLUMNS = "first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, notes, DATE_FORMAT(created_at, '%Y-%m-%d') AS created_on"
+const USER_PROFILE_COLUMNS = "first_names, last_names, DATE_FORMAT(birth_date, '%Y-%m-%d') AS birth_date, gender, phone, employment_condition, teaching_level, notes, DATE_FORMAT(created_at, '%Y-%m-%d') AS created_on"
 
 const GENDERS = ['Femenino', 'Masculino', 'Otro', 'Prefiero no decir']
+const TEACHING_LEVELS = ['Primaria', 'Secundaria']
 const CONDITIONS = ['Nombrado', 'Contratado', 'Reasignado', 'Destacado', 'Practicante', 'Otro']
 
 /** Optional profile data; full name is rebuilt from first and last names when both are given. */
@@ -366,7 +367,7 @@ function profileInput(body) {
   return {
     provided: has('firstNames'),
     // Contact fields can be sent on their own (the Usuarios view edits only these).
-    has: { gender: has('gender'), phone: has('phone'), employmentCondition: has('employmentCondition'), notes: has('notes'), birthDate: has('birthDate') },
+    has: { gender: has('gender'), phone: has('phone'), employmentCondition: has('employmentCondition'), teachingLevel: has('teachingLevel'), notes: has('notes'), birthDate: has('birthDate') },
     firstNames,
     lastNames,
     fullName: firstNames && lastNames ? `${firstNames} ${lastNames}` : '',
@@ -374,6 +375,7 @@ function profileInput(body) {
     gender: GENDERS.includes(body.gender) ? body.gender : '',
     phone: String(body.phone || '').replace(/[^\d+\s-]/g, '').trim().slice(0, 30),
     employmentCondition: CONDITIONS.includes(body.employmentCondition) ? body.employmentCondition : '',
+    teachingLevel: TEACHING_LEVELS.includes(body.teachingLevel) ? body.teachingLevel : '',
     notes: String(body.notes || '').trim().slice(0, 500),
   }
 }
@@ -401,9 +403,9 @@ app.post('/api/users', requireAuth, requireAdmin, wrap(async (req, res) => {
   if (dup.some((item) => item.email === email)) return res.status(409).json({ ok: false, error: 'Ese correo ya está registrado.' })
   if (dup.some((item) => item.dni === dni)) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   const [created] = await pool.query(
-    `INSERT INTO users (name, email, dni, password_hash, role, subject, first_names, last_names, birth_date, gender, phone, employment_condition, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.notes],
+    `INSERT INTO users (name, email, dni, password_hash, role, subject, first_names, last_names, birth_date, gender, phone, employment_condition, teaching_level, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [name, email, dni, bcrypt.hashSync(randomBytes(32).toString('hex'), 10), role, subject, profile.firstNames, profile.lastNames, profile.birthDate, profile.gender, profile.phone, profile.employmentCondition, profile.teachingLevel, profile.notes],
   )
   const [rows] = await pool.query(`SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, ${USER_PROFILE_COLUMNS} FROM users WHERE id = ?`, [created.insertId])
   const user = mapUser(rows[0])
@@ -453,12 +455,12 @@ app.patch('/api/users/:id', requireAuth, requireAdmin, wrap(async (req, res) => 
     // Profile columns only change when the form sends them (the Usuarios view does not).
     `UPDATE users SET name = ?, email = ?, subject = ?, dni = ?, role = ?,
        first_names = IF(?, ?, first_names), last_names = IF(?, ?, last_names), birth_date = IF(?, ?, birth_date),
-       gender = IF(?, ?, gender), phone = IF(?, ?, phone), employment_condition = IF(?, ?, employment_condition), notes = IF(?, ?, notes)
+       gender = IF(?, ?, gender), phone = IF(?, ?, phone), employment_condition = IF(?, ?, employment_condition), teaching_level = IF(?, ?, teaching_level), notes = IF(?, ?, notes)
      WHERE id = ?`,
     [name, email, role === 'teacher' ? subject : roleSubject(role), dni, role,
       profile.provided, profile.firstNames, profile.provided, profile.lastNames,
       profile.has.birthDate, profile.birthDate, profile.has.gender, profile.gender, profile.has.phone, profile.phone,
-      profile.has.employmentCondition, profile.employmentCondition, profile.has.notes, profile.notes,
+      profile.has.employmentCondition, profile.employmentCondition, profile.has.teachingLevel, profile.teachingLevel, profile.has.notes, profile.notes,
       req.params.id],
   )
   if (!result.affectedRows) {
