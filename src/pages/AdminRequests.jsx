@@ -44,6 +44,7 @@ export default function AdminRequests() {
   const [modal, setModal] = useState(null)
   const [note, setNote] = useState('')
   const [modalError, setModalError] = useState('')
+  const [viewId, setViewId] = useState(null)
 
   const grades = useMemo(() => [...new Set(requests.map((item) => item.grade))].sort(), [requests])
   const sections = useMemo(() => [...new Set(requests.map((item) => item.section))].sort(), [requests])
@@ -67,6 +68,11 @@ export default function AdminRequests() {
   const { rows, pager } = usePaged(visible, 10)
   const selected = requests.find((item) => item.id === selectedId) || visible[0] || null
   const count = (status) => requests.filter((item) => item.status === status).length
+
+  function view(id) {
+    setSelectedId(id)
+    setViewId(id)
+  }
 
   function open(type, request) {
     setNote('')
@@ -105,6 +111,7 @@ export default function AdminRequests() {
   }
 
   const detail = selected ? rowState(selected) : null
+  const viewed = requests.find((item) => item.id === viewId) || null
 
   return (
     <div className="space-y-5">
@@ -170,7 +177,7 @@ export default function AdminRequests() {
                     <td className={cn(td, 'whitespace-nowrap tabular-nums')}>{created.date} <span className="ml-1 text-muted-foreground">{created.time}</span></td>
                     <td className={td} onClick={(event) => event.stopPropagation()}>
                       <div className="flex gap-1">
-                        <ActionButton label="Ver detalle" onClick={() => setSelectedId(item.id)} className="border-border text-primary hover:bg-muted"><Eye /></ActionButton>
+                        <ActionButton label="Ver detalle" onClick={() => view(item.id)} className="border-border text-primary hover:bg-muted"><Eye /></ActionButton>
                         {canDecide && item.status === 'pending' && (
                           <>
                             <ActionButton label="Aprobar" disabled={conflicts.length > 0 || finished} onClick={() => open('approve', item)} className="border-border text-[#2f6447] hover:bg-muted"><Check /></ActionButton>
@@ -192,41 +199,22 @@ export default function AdminRequests() {
       {selected && (
         <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
           <p className="flex items-center gap-2 border-b border-border bg-slate-50 px-4 py-2.5 text-[15px] font-bold dark:bg-muted/60"><Info className="size-[18px] text-primary" /> Detalle de la solicitud · {requestCode(selected.id)}</p>
-          <div className="grid gap-5 p-5 lg:grid-cols-[1fr_1fr_auto]">
-            <dl className="space-y-3 text-sm">
-              <DetailRow icon={UserRound} label="Docente" value={personName(users, selected.teacherId)} />
-              <DetailRow icon={CalendarDays} label="Fecha de uso" value={longDate(selected.date)} />
-              <DetailRow icon={Clock} label="Horario" value={`${selected.startTime} – ${selected.endTime}`} />
-              <DetailRow icon={LayoutGrid} label="Actividad" value={selected.purpose} />
-            </dl>
-            <dl className="space-y-3 border-border text-sm lg:border-l lg:pl-5">
-              <DetailRow icon={Building2} label="Ambiente" value={selected.roomName || '—'} />
-              <DetailRow icon={GraduationCap} label="Grado / Sección" value={`${selected.grade} "${selected.section}"`} />
-              <DetailRow icon={Users} label="Cantidad de estudiantes" value={<span className="rounded-md bg-slate-50 px-2.5 py-0.5 font-bold text-primary dark:bg-blue-500/15 dark:text-blue-200">{selected.students}</span>} />
-              <DetailRow icon={FileText} label="Observaciones" value={selected.notes || selected.adminNote || '—'} />
-            </dl>
-            <div className="flex min-w-56 flex-col justify-center gap-3 border-border lg:border-l lg:pl-5">
-              <StatusChip status={selected.status} meta={REQUEST_META} className="self-start" />
-              {canDecide && selected.status === 'pending' && (
-                <>
-                  {detail.conflicts.length > 0 && (
-                    <p className="text-xs font-semibold text-[#8a5a12] dark:text-amber-400">
-                      Se cruza con {detail.conflicts.map((conflict) => `${personName(users, conflict.teacherId)} (${STATUS[conflict.status]})`).join(', ')}.
-                    </p>
-                  )}
-                  {detail.finished && <p className="text-xs text-muted-foreground">Este horario ya transcurrió. Recházalo para archivarla.</p>}
-                  <Button type="button" variant="outline" size="lg" className="border-border text-[#2f6447] hover:bg-muted" disabled={detail.conflicts.length > 0 || detail.finished} onClick={() => open('approve', selected)}><Check /> Aprobar solicitud</Button>
-                  <Button type="button" variant="outline" size="lg" className="border-border text-[#b4413c] hover:bg-muted" onClick={() => open('reject', selected)}><X /> Rechazar solicitud</Button>
-                </>
-              )}
-              {canDecide && selected.status === 'approved' && !detail.finished && (
-                <Button type="button" variant="outline" onClick={() => open('release', selected)}><Unlock /> Liberar horario</Button>
-              )}
-              {selected.adminNote && selected.status !== 'pending' && <p className="text-xs text-muted-foreground">Nota: {selected.adminNote}</p>}
-            </div>
-          </div>
+          <RequestDetailBody request={selected} state={detail} users={users} canDecide={canDecide} onAction={open} />
         </div>
       )}
+
+      <Dialog open={Boolean(viewed)} onOpenChange={(next) => { if (!next) setViewId(null) }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Info className="size-[18px] text-primary" /> Detalle de la solicitud · {viewed && requestCode(viewed.id)}</DialogTitle>
+            <DialogDescription>Información registrada por el docente.</DialogDescription>
+          </DialogHeader>
+          {viewed && (
+            <RequestDetailBody request={viewed} state={rowState(viewed)} users={users} canDecide={canDecide} compact
+              onAction={(type, request) => { setViewId(null); open(type, request) }} />
+          )}
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(modal)} onOpenChange={(next) => { if (!next) setModal(null) }}>
         <DialogContent>
@@ -260,6 +248,44 @@ export default function AdminRequests() {
         </DialogContent>
       </Dialog>
     </div>
+  )
+}
+
+function RequestDetailBody({ request, state, users, canDecide, onAction, compact = false }) {
+  return (
+  <div className={cn('grid gap-5 lg:grid-cols-[1fr_1fr_auto]', !compact && 'p-5')}>
+    <dl className="space-y-3 text-sm">
+      <DetailRow icon={UserRound} label="Docente" value={personName(users, request.teacherId)} />
+      <DetailRow icon={CalendarDays} label="Fecha de uso" value={longDate(request.date)} />
+      <DetailRow icon={Clock} label="Horario" value={`${request.startTime} – ${request.endTime}`} />
+      <DetailRow icon={LayoutGrid} label="Actividad" value={request.purpose} />
+    </dl>
+    <dl className="space-y-3 border-border text-sm lg:border-l lg:pl-5">
+      <DetailRow icon={Building2} label="Ambiente" value={request.roomName || '—'} />
+      <DetailRow icon={GraduationCap} label="Grado / Sección" value={`${request.grade} "${request.section}"`} />
+      <DetailRow icon={Users} label="Cantidad de estudiantes" value={<span className="rounded-md bg-slate-50 px-2.5 py-0.5 font-bold text-primary dark:bg-blue-500/15 dark:text-blue-200">{request.students}</span>} />
+      <DetailRow icon={FileText} label="Observaciones" value={request.notes || request.adminNote || '—'} />
+    </dl>
+    <div className="flex min-w-56 flex-col justify-center gap-3 border-border lg:border-l lg:pl-5">
+      <StatusChip status={request.status} meta={REQUEST_META} className="self-start" />
+      {canDecide && request.status === 'pending' && (
+        <>
+          {state.conflicts.length > 0 && (
+            <p className="text-xs font-semibold text-[#8a5a12] dark:text-amber-400">
+              Se cruza con {state.conflicts.map((conflict) => `${personName(users, conflict.teacherId)} (${STATUS[conflict.status]})`).join(', ')}.
+            </p>
+          )}
+          {state.finished && <p className="text-xs text-muted-foreground">Este horario ya transcurrió. Recházalo para archivarla.</p>}
+          <Button type="button" variant="outline" size="lg" className="border-border text-[#2f6447] hover:bg-muted" disabled={state.conflicts.length > 0 || state.finished} onClick={() => onAction('approve', request)}><Check /> Aprobar solicitud</Button>
+          <Button type="button" variant="outline" size="lg" className="border-border text-[#b4413c] hover:bg-muted" onClick={() => onAction('reject', request)}><X /> Rechazar solicitud</Button>
+        </>
+      )}
+      {canDecide && request.status === 'approved' && !state.finished && (
+        <Button type="button" variant="outline" onClick={() => onAction('release', request)}><Unlock /> Liberar horario</Button>
+      )}
+      {request.adminNote && request.status !== 'pending' && <p className="text-xs text-muted-foreground">Nota: {request.adminNote}</p>}
+    </div>
+  </div>
   )
 }
 
