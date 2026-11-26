@@ -63,7 +63,7 @@ export default function CalendarPage() {
   const [creatingDate, setCreatingDate] = useState(null)
 
   // Rooms of the chosen level (Primaria / Secundaria); all rooms when no level is chosen.
-  const levelRooms = level ? rooms.filter((room) => room.level === level) : rooms
+  const levelRooms = admin && level ? rooms.filter((room) => room.level === level) : rooms
   const levelRoomIds = new Set(levelRooms.map((room) => String(room.id)))
   const activeRoom = levelRoomIds.has(String(roomId)) ? String(roomId) : String(levelRooms[0]?.id || '')
   const anchorDate = parseISODate(anchor)
@@ -163,12 +163,12 @@ export default function CalendarPage() {
       </div>
 
       <div className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]">
-        <FilterLabel label="Nivel">
-          {/* A teacher with an assigned level only gets the rooms of that level from the server. */}
-          {!admin && user.teachingLevel
-            ? <Select value={user.teachingLevel} onChange={() => {}} disabled options={[{ value: user.teachingLevel, label: user.teachingLevel }]} />
-            : <Select value={level} onChange={setLevel} options={[allOption(), ...['Primaria', 'Secundaria'].map((value) => ({ value, label: value }))]} />}
-        </FilterLabel>
+        {/* Teachers never choose a level: the server only sends them the rooms of their own level. */}
+        {admin ? (
+          <FilterLabel label="Nivel"><Select value={level} onChange={setLevel} options={[allOption(), ...['Primaria', 'Secundaria'].map((value) => ({ value, label: value }))]} /></FilterLabel>
+        ) : user.teachingLevel ? (
+          <FilterLabel label="Nivel"><Select value={user.teachingLevel} onChange={() => {}} disabled options={[{ value: user.teachingLevel, label: user.teachingLevel }]} /></FilterLabel>
+        ) : null}
         <FilterLabel label="Estado"><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={[allOption(), ...['pending', 'approved', 'rejected'].map((value) => ({ value, label: STATUS[value] }))]} /></FilterLabel>
         <div className="flex items-end">
           <Button type="button" variant="outline" className="w-full" onClick={() => setFilters({ status: '', from: '', to: '' })}>Limpiar</Button>
