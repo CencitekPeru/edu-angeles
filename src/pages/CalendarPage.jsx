@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { CalendarCheck, CalendarDays, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Laptop, Plus, X, XCircle } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { isStaff, useCan } from '../lib/permissions'
-import { GRADES, SECTIONS, STATUS, personName } from '../lib/reservations'
+import { STATUS, personName } from '../lib/reservations'
 import { LAB, addDays, isPastEnd, parseISODate, schoolWeek, toISODate, toMinutes, todayISO } from '../lib/time'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -52,16 +52,20 @@ export default function CalendarPage() {
   const canDecide = useCan()
   const today = todayISO()
   const [roomId, setRoomId] = useState('')
+  const [level, setLevel] = useState('')
   const [view, setView] = useState('week')
   const [anchor, setAnchor] = useState(today)
-  const [filters, setFilters] = useState({ grade: '', section: '', status: '', from: '', to: '' })
+  const [filters, setFilters] = useState({ status: '', from: '', to: '' })
   const [detail, setDetail] = useState(null)
   const [rejectNote, setRejectNote] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [saving, setSaving] = useState(false)
   const [creatingDate, setCreatingDate] = useState(null)
 
-  const activeRoom = rooms.some((room) => String(room.id) === String(roomId)) ? String(roomId) : String(rooms[0]?.id || '')
+  // Rooms of the chosen level (Primaria / Secundaria); all rooms when no level is chosen.
+  const levelRooms = level ? rooms.filter((room) => room.level === level) : rooms
+  const levelRoomIds = new Set(levelRooms.map((room) => String(room.id)))
+  const activeRoom = levelRoomIds.has(String(roomId)) ? String(roomId) : String(levelRooms[0]?.id || '')
   const anchorDate = parseISODate(anchor)
 
   const days = useMemo(() => {
@@ -75,14 +79,12 @@ export default function CalendarPage() {
   }, [view, anchor, anchorDate])
 
   const passes = (item) =>
-    (!filters.grade || item.grade === filters.grade) &&
-    (!filters.section || item.section === filters.section) &&
     (!filters.status || item.status === filters.status) &&
     (!filters.from || item.date >= filters.from) &&
     (!filters.to || item.date <= filters.to)
 
-  // Requests in the visible period (all rooms) drive the stat cards.
-  const periodRequests = requests.filter((item) => item.date >= days[0] && item.date <= days.at(-1) && item.status !== 'cancelled' && passes(item))
+  // Requests in the visible period (all rooms of the chosen level) drive the stat cards.
+  const periodRequests = requests.filter((item) => item.date >= days[0] && item.date <= days.at(-1) && item.status !== 'cancelled' && levelRoomIds.has(String(item.roomId)) && passes(item))
 
   const events = useMemo(() => {
     const list = requests
@@ -93,7 +95,6 @@ export default function CalendarPage() {
         const weekday = parseISODate(date).getDay()
         for (const slot of fixedSchedules) {
           if (String(slot.roomId) !== activeRoom || Number(slot.weekday) !== weekday) continue
-          if ((filters.grade && slot.grade !== filters.grade) || (filters.section && slot.section !== filters.section)) continue
           list.push({ ...slot, id: `fijo-${slot.id}-${date}`, date, kind: 'fixed', teacherName: slot.teacherName })
         }
       }
@@ -161,13 +162,11 @@ export default function CalendarPage() {
         <StatCard tone="red" icon={XCircle} value={periodRequests.filter((item) => item.status === 'rejected').length} label="Rechazadas" onClick={() => setFilters({ ...filters, status: 'rejected' })} />
       </div>
 
-      <div className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-3 xl:grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,2fr)]">
-        <FilterLabel label="Ambiente"><Select value={activeRoom} onChange={setRoomId} options={rooms.map((room) => ({ value: String(room.id), label: room.name }))} /></FilterLabel>
-        <FilterLabel label="Grado"><Select value={filters.grade} onChange={(grade) => setFilters({ ...filters, grade })} options={[allOption(), ...GRADES.map((value) => ({ value, label: value }))]} /></FilterLabel>
-        <FilterLabel label="Sección"><Select value={filters.section} onChange={(section) => setFilters({ ...filters, section })} options={[allOption(), ...SECTIONS.map((value) => ({ value, label: value }))]} /></FilterLabel>
+      <div className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]">
+        <FilterLabel label="Nivel"><Select value={level} onChange={setLevel} options={[allOption(), ...['Primaria', 'Secundaria'].map((value) => ({ value, label: value }))]} /></FilterLabel>
         <FilterLabel label="Estado"><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={[allOption(), ...['pending', 'approved', 'rejected'].map((value) => ({ value, label: STATUS[value] }))]} /></FilterLabel>
         <div className="flex items-end">
-          <Button type="button" variant="outline" className="w-full" onClick={() => setFilters({ grade: '', section: '', status: '', from: '', to: '' })}>Limpiar</Button>
+          <Button type="button" variant="outline" className="w-full" onClick={() => setFilters({ status: '', from: '', to: '' })}>Limpiar</Button>
         </div>
         <FilterLabel label="Rango de fechas">
           <span className="flex items-center gap-1.5">
@@ -182,12 +181,13 @@ export default function CalendarPage() {
         <div className="min-w-0 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-2">
-              {rooms.map((room) => (
+              {levelRooms.map((room) => (
                 <button key={room.id} type="button" onClick={() => setRoomId(String(room.id))}
                   className={cn('flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold', String(room.id) === activeRoom ? 'border-primary bg-primary text-primary-foreground shadow' : 'border-border bg-card text-foreground hover:bg-muted')}>
                   <Laptop className="size-4" /> {room.name}
                 </button>
               ))}
+              {rooms.length > 0 && !levelRooms.length && <p className="text-sm text-muted-foreground">No hay salas de cómputo asignadas a {level}. Asígnales el nivel en “Categorías y ambientes”.</p>}
               {!rooms.length && <p className="text-sm text-muted-foreground">No hay salas de cómputo registradas. Créalas en “Categorías y ambientes”.</p>}
             </div>
             <div className="flex items-center gap-2">

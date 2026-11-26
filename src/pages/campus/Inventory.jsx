@@ -12,6 +12,8 @@ import { cn } from '@/lib/utils'
 import { Filters, PageHeader, Panel, Pill, StatCard, Table } from './kit'
 import { ImportInventoryDialog, downloadInventoryTemplate } from './InventoryImport'
 import { EquipmentForm, LEVELS } from './EquipmentForm'
+
+const ROOM_LEVELS = ['Primaria', 'Secundaria']
 import { usePatrimonialCodes } from './PatrimonialCodePicker'
 import { ImportPatrimonialCodesDialog } from './PatrimonialCodesImport'
 import { exportTablePdf, exportTableXlsx } from '../../lib/exporters'
@@ -69,7 +71,14 @@ function CatalogList({ items, label, canEdit, onEdit, onRemove, empty }) {
       <ul className="space-y-2">
         {pageItems.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-muted/40">
-            <span className="truncate" title={item.name}>{item.name}</span>
+            <span className="flex min-w-0 items-center gap-2">
+              <span className="truncate" title={item.name}>{item.name}</span>
+              {item.level !== undefined && (
+                <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold', item.level ? 'border-border bg-card text-foreground/80' : 'border-dashed border-border text-muted-foreground')}>
+                  {item.level || 'Sin nivel'}
+                </span>
+              )}
+            </span>
             {canEdit && (
               <div className="flex shrink-0 items-center gap-1.5">
                 {onEdit && <Button type="button" variant="outline" size="icon-sm" aria-label={`Editar ${label.toLowerCase()} ${item.name}`} title={`Editar ${label.toLowerCase()} ${item.name}`} className="shadow-sm" onClick={() => onEdit(item)}><Pencil className="size-4" /></Button>}
@@ -473,6 +482,7 @@ export function CatalogPage() {
   const [category, setCategory] = useState('')
   const [place, setPlace] = useState('')
   const [room, setRoom] = useState('')
+  const [roomLevel, setRoomLevel] = useState('')
   const [kind, setKind] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [rooms, setRooms] = useState([])
@@ -488,14 +498,18 @@ export function CatalogPage() {
   function openDialog(nextKind, item = null) {
     const setter = nextKind === 'categoria' ? setCategory : nextKind === 'ambiente' ? setPlace : setRoom
     setter(item ? item.name : '')
+    if (nextKind === 'sala') setRoomLevel(item?.level || '')
     setEditingId(item ? item.id : null)
     setKind(nextKind)
   }
 
   async function save(path, name, clear) {
+    const isRoom = path === '/api/rooms'
+    if (isRoom && !roomLevel) return toast('Selecciona el nivel: Primaria o Secundaria.', 'bad')
+    const body = isRoom ? { name, level: roomLevel } : { name }
     const result = editingId
-      ? await api(`${path}/${editingId}`, { method: 'PUT', body: { name } })
-      : await api(path, { method: 'POST', body: { name } })
+      ? await api(`${path}/${editingId}`, { method: 'PUT', body })
+      : await api(path, { method: 'POST', body })
     if (!result.ok) return toast(result.error || 'No se pudo guardar.', 'bad')
     if (editingId) toast(`"${name.trim()}" actualizado.`)
     clear('')
@@ -580,6 +594,18 @@ export function CatalogPage() {
                     required
                   />
                 </Field>
+                {kind === 'sala' && (
+                  <Field label="Nivel educativo" className="mt-3">
+                    <div role="radiogroup" aria-label="Nivel educativo" className="grid grid-cols-2 gap-2">
+                      {ROOM_LEVELS.map((level) => (
+                        <button key={level} type="button" role="radio" aria-checked={roomLevel === level} onClick={() => setRoomLevel(level)}
+                          className={cn('h-9 rounded-md border text-sm font-semibold transition-colors', roomLevel === level ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-foreground hover:bg-muted')}>
+                          {level}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                )}
               </div>
             </section>
             <DialogFooter className="border-t border-border/70 pt-4">

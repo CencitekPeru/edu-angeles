@@ -60,7 +60,10 @@ const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, 
  * Renames a simple catalog row (id + unique name). `cascade` lists text columns that store the
  * name instead of the id, so they are updated in the same transaction.
  */
-async function renameCatalogItem(req, res, { table, where = '', label, notFound, duplicate, cascade = [] }) {
+/** Levels a computer room can belong to. */
+const ROOM_LEVELS = ['Primaria', 'Secundaria']
+
+async function renameCatalogItem(req, res, { table, where = '', label, notFound, duplicate, cascade = [], extra = {} }) {
   const name = String(req.body.name || '').replace(/\s+/g, ' ').trim()
   if (name.length < 3) return res.status(400).json({ ok: false, error: 'Escribe un nombre de al menos 3 caracteres.' })
   if (name.length > 120) return res.status(400).json({ ok: false, error: 'El nombre admite hasta 120 caracteres.' })
@@ -77,12 +80,16 @@ async function renameCatalogItem(req, res, { table, where = '', label, notFound,
       await connection.rollback()
       return res.status(409).json({ ok: false, error: duplicate })
     }
-    await connection.query(`UPDATE ${table} SET name = ? WHERE id = ?`, [name, req.params.id])
+    const extraColumns = Object.keys(extra)
+    await connection.query(
+      `UPDATE ${table} SET ${['name', ...extraColumns].map((column) => `${column} = ?`).join(', ')} WHERE id = ?`,
+      [name, ...extraColumns.map((column) => extra[column]), req.params.id],
+    )
     for (const [cascadeTable, column] of cascade) {
       await connection.query(`UPDATE ${cascadeTable} SET ${column} = ? WHERE ${column} = ?`, [name, rows[0].name])
     }
     await connection.commit()
-    res.json({ ok: true, item: { id: Number(req.params.id), name }, label })
+    res.json({ ok: true, item: { id: Number(req.params.id), name, ...extra }, label })
   } catch (error) {
     await connection.rollback()
     throw error
@@ -97,28 +104,35 @@ export function campusRouter() {
 
   router.get('/api/rooms', requireAuth, wrap(async (_req, res) => {
     const [rows] = await getPool().query(
-      'SELECT id, name FROM rooms WHERE is_computer_room = 1 ORDER BY name',
+      'SELECT id, name, level FROM rooms WHERE is_computer_room = 1 ORDER BY name',
     )
     res.json({ ok: true, rooms: rows })
   }))
 
   router.post('/api/rooms', requireAuth, requireAdmin, wrap(async (req, res) => {
     const name = String(req.body.name || '').trim()
+    const level = String(req.body.level || '')
     if (name.length < 3) return res.status(400).json({ ok: false, error: 'Escribe un nombre de al menos 3 caracteres.' })
     if (name.length > 120) return res.status(400).json({ ok: false, error: 'El nombre admite hasta 120 caracteres.' })
+    if (!ROOM_LEVELS.includes(level)) return res.status(400).json({ ok: false, error: 'Selecciona el nivel: Primaria o Secundaria.' })
     const [existing] = await getPool().query('SELECT id FROM rooms WHERE LOWER(name) = LOWER(?)', [name])
     if (existing.length) return res.status(409).json({ ok: false, error: 'Ya existe una sala con ese nombre.' })
     const [created] = await getPool().query(
-      'INSERT INTO rooms (name, is_computer_room) VALUES (?, 1)',
-      [name],
+      'INSERT INTO rooms (name, is_computer_room, level) VALUES (?, 1, ?)',
+      [name, level],
     )
-    res.status(201).json({ ok: true, room: { id: created.insertId, name } })
+    res.status(201).json({ ok: true, room: { id: created.insertId, name, level } })
   }))
 
-  router.put('/api/rooms/:id', requireAuth, requireAdmin, wrap((req, res) => renameCatalogItem(req, res, {
-    table: 'rooms', where: 'AND is_computer_room = 1', label: 'Sala',
-    notFound: 'La sala de cómputo ya no existe.', duplicate: 'Ya existe una sala con ese nombre.',
-  })))
+  router.put('/api/rooms/:id', requireAuth, requireAdmin, wrap((req, res) => {
+    const level = req.body.level === undefined ? undefined : String(req.body.level)
+    if (level !== undefined && !ROOM_LEVELS.includes(level)) return res.status(400).json({ ok: false, error: 'Selecciona el nivel: Primaria o Secundaria.' })
+    return renameCatalogItem(req, res, {
+      table: 'rooms', where: 'AND is_computer_room = 1', label: 'Sala',
+      notFound: 'La sala de cómputo ya no existe.', duplicate: 'Ya existe una sala con ese nombre.',
+      extra: level === undefined ? {} : { level },
+    })
+  }))
 
   router.delete('/api/rooms/:id', requireAuth, requireAdmin, wrap(async (req, res) => {
     const connection = await getPool().getConnection()
@@ -1321,6 +1335,11 @@ export async function ensureCampus() {
   const [roomTypeColumn] = await db.query("SHOW COLUMNS FROM rooms LIKE 'is_computer_room'")
   if (!roomTypeColumn.length) {
     await db.query('ALTER TABLE rooms ADD COLUMN is_computer_room TINYINT(1) NOT NULL DEFAULT 0')
+  }
+  // Educational level a computer room serves (Primaria / Secundaria); empty for older rooms until edited.
+  const [roomLevelColumn] = await db.query("SHOW COLUMNS FROM rooms LIKE 'level'")
+  if (!roomLevelColumn.length) {
+    await db.query("ALTER TABLE rooms ADD COLUMN level VARCHAR(20) NOT NULL DEFAULT ''")
   }
   await db.query(`CREATE TABLE IF NOT EXISTS categories (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
