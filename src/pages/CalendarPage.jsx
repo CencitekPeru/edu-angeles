@@ -163,7 +163,12 @@ export default function CalendarPage() {
       </div>
 
       <div className="grid items-end gap-3 rounded-xl border border-border bg-card p-4 shadow-sm sm:grid-cols-3 xl:grid-cols-[repeat(3,minmax(0,1fr))_minmax(0,2fr)]">
-        <FilterLabel label="Nivel"><Select value={level} onChange={setLevel} options={[allOption(), ...['Primaria', 'Secundaria'].map((value) => ({ value, label: value }))]} /></FilterLabel>
+        <FilterLabel label="Nivel">
+          {/* A teacher with an assigned level only gets the rooms of that level from the server. */}
+          {!admin && user.teachingLevel
+            ? <Select value={user.teachingLevel} onChange={() => {}} disabled options={[{ value: user.teachingLevel, label: user.teachingLevel }]} />
+            : <Select value={level} onChange={setLevel} options={[allOption(), ...['Primaria', 'Secundaria'].map((value) => ({ value, label: value }))]} />}
+        </FilterLabel>
         <FilterLabel label="Estado"><Select value={filters.status} onChange={(status) => setFilters({ ...filters, status })} options={[allOption(), ...['pending', 'approved', 'rejected'].map((value) => ({ value, label: STATUS[value] }))]} /></FilterLabel>
         <div className="flex items-end">
           <Button type="button" variant="outline" className="w-full" onClick={() => setFilters({ status: '', from: '', to: '' })}>Limpiar</Button>

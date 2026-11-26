@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { GRADES, SECTIONS, conflictingRequests, validateRequest } from '../src/lib/reservations.js'
 import { formatLongDate, isPastEnd, parseISODate, rangesOverlap, toMinutes, todayISO } from '../src/lib/time.js'
 import { config } from './config.js'
-import { campusRouter, ensureCampus } from './campus.js'
+import { campusRouter, ensureCampus, teacherLevel } from './campus.js'
 import { adminRouter } from './admin.js'
 import { ensurePsychology, psychologyRouter } from './psychology.js'
 import { assetsRouter, ensureAssets } from './assets.js'
@@ -114,12 +114,12 @@ app.post('/api/auth/login', wrap(async (req, res) => {
 }))
 
 app.get('/api/auth/me', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, teaching_level FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: rows[0] ? mapUser(rows[0]) : req.user })
 }))
 
 app.get('/api/profile', requireAuth, wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, teaching_level FROM users WHERE id = ?', [req.user.id])
   if (!rows[0]) return res.status(404).json({ ok: false, error: 'No se encontró el perfil.' })
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
@@ -140,7 +140,7 @@ app.patch('/api/profile', requireAuth, wrap(async (req, res) => {
   const [duplicateDni] = await pool.query('SELECT id FROM users WHERE dni = ? AND id <> ?', [dni, req.user.id])
   if (duplicateDni.length) return res.status(409).json({ ok: false, error: 'Ese DNI ya está asociado a otra cuenta.' })
   await pool.query('UPDATE users SET name = ?, email = ?, dni = ? WHERE id = ?', [name, email, dni, req.user.id])
-  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions FROM users WHERE id = ?', [req.user.id])
+  const [rows] = await pool.query('SELECT id, name, email, dni, profile_photo, role, extra_roles, subject, active, permissions, teaching_level FROM users WHERE id = ?', [req.user.id])
   res.json({ ok: true, user: mapUser(rows[0]) })
 }))
 
@@ -177,6 +177,14 @@ app.post('/api/requests', requireAuth, wrap(async (req, res) => {
     await connection.beginTransaction()
     const roomId = await resolveRoomId(input.roomId)
     input.roomId = roomId
+    const level = await teacherLevel(req.user.id)
+    if (level) {
+      const [[room]] = await connection.query('SELECT level FROM rooms WHERE id = ?', [roomId])
+      if (room?.level !== level) {
+        await connection.rollback()
+        return res.status(403).json({ ok: false, error: `Solo puedes reservar salas de ${level}.` })
+      }
+    }
     const [locked] = await connection.query(
       `SELECT * FROM requests WHERE date = ? AND room_id = ? AND status IN ('pending', 'approved') FOR UPDATE`,
       [input.date, roomId],

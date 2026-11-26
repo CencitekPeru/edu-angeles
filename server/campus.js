@@ -63,6 +63,12 @@ const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, 
 /** Levels a computer room can belong to. */
 const ROOM_LEVELS = ['Primaria', 'Secundaria']
 
+/** Teaching level (Primaria / Secundaria) of a user, or '' when none is assigned. */
+export async function teacherLevel(userId) {
+  const [rows] = await getPool().query('SELECT teaching_level FROM users WHERE id = ?', [userId])
+  return rows[0]?.teaching_level || ''
+}
+
 async function renameCatalogItem(req, res, { table, where = '', label, notFound, duplicate, cascade = [], extra = {} }) {
   const name = String(req.body.name || '').replace(/\s+/g, ' ').trim()
   if (name.length < 3) return res.status(400).json({ ok: false, error: 'Escribe un nombre de al menos 3 caracteres.' })
@@ -102,10 +108,12 @@ export function campusRouter() {
   const router = express.Router()
   router.use('/api/uploads', express.static(uploadDir))
 
-  router.get('/api/rooms', requireAuth, wrap(async (_req, res) => {
-    const [rows] = await getPool().query(
-      'SELECT id, name, level FROM rooms WHERE is_computer_room = 1 ORDER BY name',
-    )
+  router.get('/api/rooms', requireAuth, wrap(async (req, res) => {
+    // A teacher assigned to a level only sees the computer rooms of that level.
+    const level = req.user.role === 'teacher' ? await teacherLevel(req.user.id) : ''
+    const [rows] = level
+      ? await getPool().query('SELECT id, name, level FROM rooms WHERE is_computer_room = 1 AND level = ? ORDER BY name', [level])
+      : await getPool().query('SELECT id, name, level FROM rooms WHERE is_computer_room = 1 ORDER BY name')
     res.json({ ok: true, rooms: rows })
   }))
 

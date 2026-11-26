@@ -208,6 +208,7 @@ export function mapUser(row) {
     subject: row.subject,
     active: Boolean(row.active),
     permissions: parsePermissions(row.permissions),
+    ...(row.teaching_level !== undefined ? { teachingLevel: row.teaching_level || '' } : {}),
     ...(row.first_names !== undefined ? {
       firstNames: row.first_names || '',
       lastNames: row.last_names || '',
@@ -215,7 +216,6 @@ export function mapUser(row) {
       gender: row.gender || '',
       phone: row.phone || '',
       employmentCondition: row.employment_condition || '',
-      teachingLevel: row.teaching_level || '',
       notes: row.notes || '',
       createdOn: row.created_on ? String(row.created_on).slice(0, 10) : '',
     } : {}),
