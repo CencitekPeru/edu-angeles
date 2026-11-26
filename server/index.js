@@ -16,6 +16,7 @@ import { attendanceRouter, ensureAttendance } from './attendance.js'
 import { ensureParents, parentsRouter } from './parents.js'
 import { documentsRouter, ensureDocuments } from './documents.js'
 import { ensureGuardianMeetings, guardianMeetingsRouter } from './guardianMeetings.js'
+import { classAttendanceRouter, ensureClassAttendance } from './classAttendance.js'
 import { initDb, mapNotification, mapRequest, mapUser, pool, resetAndSeed } from './db.js'
 import { EDITABLE_ROLES, permissionDiff, roleOriginal, customRoleList, isCustomRole, parseRoles, setCustomRoles, actionForRequest, apiAccessError, can, canSee, moduleForApi, parsePermissions, rolePermissions, setRolePermissions } from '../src/lib/accessModel.js'
 
@@ -58,6 +59,7 @@ app.use(assetsRouter())
 app.use(activitiesRouter())
 app.use(documentsRouter())
 app.use(guardianMeetingsRouter())
+app.use(classAttendanceRouter())
 app.use(adminRouter())
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
@@ -630,6 +632,7 @@ if (process.env.NODE_ENV !== 'production') {
     await ensureParents()
     await ensureDocuments()
     await ensureGuardianMeetings()
+    await ensureClassAttendance()
     await ensureRoles()
     res.json({ ok: true })
   }))
@@ -678,6 +681,7 @@ initDb()
     await ensureParents()
     await ensureDocuments()
     await ensureGuardianMeetings()
+    await ensureClassAttendance()
     await ensureRoles()
     app.listen(config.port, '0.0.0.0', () => {
       console.log(`API de Nodo escuchando en el puerto ${config.port}`)

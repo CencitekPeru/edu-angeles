@@ -137,7 +137,7 @@ export async function initDb() {
 
 export async function resetAndSeed() {
   await pool.query('SET FOREIGN_KEY_CHECKS = 0')
-  for (const table of ['incident_photos', 'incidents', 'maintenance_photos', 'maintenance', 'equipment_photos', 'parts', 'material_inventory', 'documents', 'fixed_schedules', 'notifications', 'requests', 'equipment', 'categories', 'places', 'rooms', 'users']) {
+  for (const table of ['incident_photos', 'incidents', 'maintenance_photos', 'maintenance', 'equipment_photos', 'parts', 'material_inventory', 'documents', 'class_attendance', 'fixed_schedules', 'notifications', 'requests', 'equipment', 'categories', 'places', 'rooms', 'users']) {
     await pool.query(`DELETE FROM ${table}`)
   }
   await pool.query('SET FOREIGN_KEY_CHECKS = 1')

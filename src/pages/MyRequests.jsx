@@ -10,6 +10,7 @@ import { StatusChip, dmy, longDate, tableHead, td, th } from './attendance/share
 import { REQUEST_META, createdParts, requestCode, shortDayDate } from './reservations/shared'
 import { CalendarLegend, MonthCalendar } from './reservations/MonthCalendar'
 import NewRequestDialog from './reservations/NewRequestDialog'
+import ClassAttendance from './reservations/ClassAttendance'
 
 export default function MyRequests() {
   const { user, requests, rooms, cancelRequest, toast } = useApp()
@@ -122,6 +123,8 @@ export default function MyRequests() {
           )}
         </Panel>
       </div>
+
+      <ClassAttendance />
 
       <Panel
         title="Historial de solicitudes"
