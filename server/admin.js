@@ -75,10 +75,46 @@ function splitSql(sql) {
   return statements.filter((statement) => !/^(USE|CREATE\s+(DATABASE|SCHEMA)|DROP\s+(DATABASE|SCHEMA)|DELIMITER)\b/i.test(statement))
 }
 
+/**
+ * Makes a dump from another MySQL version load on this server (e.g. a MySQL 8 dump on XAMPP's MariaDB):
+ * collations and character sets the server does not know are replaced by equivalent ones, and
+ * MySQL-8-only table options are dropped. Only structure statements are touched, never the data.
+ */
+async function adaptToServer(connection, statements) {
+  const [collations] = await connection.query('SHOW COLLATION')
+  const [charsets] = await connection.query('SHOW CHARACTER SET')
+  const knownCollations = new Set(collations.map((row) => row.Collation.toLowerCase()))
+  const knownCharsets = new Set(charsets.map((row) => row.Charset.toLowerCase()))
+  const charsetFor = (name) => {
+    const lower = name.toLowerCase()
+    if (knownCharsets.has(lower)) return lower
+    if (lower === 'utf8mb3' && knownCharsets.has('utf8')) return 'utf8'
+    if (lower === 'utf8' && knownCharsets.has('utf8mb3')) return 'utf8mb3'
+    return lower
+  }
+  const collationFor = (name) => {
+    const lower = name.toLowerCase()
+    if (knownCollations.has(lower)) return lower
+    const [prefix, ...rest] = lower.split('_')
+    const charset = charsetFor(prefix)
+    return [`${charset}_${rest.join('_')}`, `${charset}_unicode_ci`, `${charset}_general_ci`].find((item) => knownCollations.has(item)) || lower
+  }
+  return statements.map((statement) => {
+    if (/^(INSERT|REPLACE)\b/i.test(statement)) return statement
+    return statement
+      // MySQL 8 table options inside version comments (MariaDB would try to run them).
+      .replace(/\/\*!80\d{3}[^*]*\*\//g, '')
+      .replace(/\b(utf8mb4|utf8mb3|utf8)_[a-z0-9_]+\b/gi, (match) => collationFor(match))
+      .replace(/\butf8mb3\b(?!_)/gi, (match) => charsetFor(match))
+  })
+}
+
 /** Runs the statements in batches small enough for MySQL's packet limit. */
-async function runSql(statements) {
+async function runSql(input) {
+  let statements = input
   const connection = await mysql.createConnection({ ...config.db, multipleStatements: true, charset: 'utf8mb4' })
   try {
+    statements = await adaptToServer(connection, statements)
     await connection.query('SET FOREIGN_KEY_CHECKS = 0')
     let batch = []
     let size = 0
