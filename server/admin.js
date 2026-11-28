@@ -99,23 +99,85 @@ async function adaptToServer(connection, statements) {
     const charset = charsetFor(prefix)
     return [`${charset}_${rest.join('_')}`, `${charset}_unicode_ci`, `${charset}_general_ci`].find((item) => knownCollations.has(item)) || lower
   }
-  return statements.map((statement) => {
+  const jsonColumns = []
+  const adapted = statements.map((statement) => {
     if (/^(INSERT|REPLACE)\b/i.test(statement)) return statement
+    // JSON columns are created as plain text so that values exported badly by older versions still load;
+    // they are repaired right after the data is in (see repairJsonColumns).
+    const table = /^CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([^\s`(]+)`?/i.exec(statement)?.[1]
+    if (table) {
+      statement = statement.replace(/`([^`]+)`\s+json\b/gi, (_match, column) => {
+        jsonColumns.push({ table, column })
+        return `\`${column}\` longtext`
+      })
+    }
     return statement
       // MySQL 8 table options inside version comments (MariaDB would try to run them).
       .replace(/\/\*!80\d{3}[^*]*\*\//g, '')
       .replace(/\b(utf8mb4|utf8mb3|utf8)_[a-z0-9_]+\b/gi, (match) => collationFor(match))
       .replace(/\butf8mb3\b(?!_)/gi, (match) => charsetFor(match))
   })
+  return { statements: adapted, jsonColumns }
+}
+
+/**
+ * Turns a value exported as `key` = 'value', `key2` = 2 (an object escaped as SQL by older
+ * versions of the export) back into JSON. Returns null when the text is not in that form.
+ */
+export function repairJson(text) {
+  const pattern = /\s*`((?:[^`]|``)+)`\s*=\s*('(?:[^'\\]|\\.|'')*'|-?\d+(?:\.\d+)?|NULL|true|false)\s*(,|$)/giy
+  const escapes = { n: '\n', r: '\r', t: '\t', 0: '\0', Z: '\x1a' }
+  const result = {}
+  let match
+  let end = 0
+  while ((match = pattern.exec(text))) {
+    const [, key, raw, comma] = match
+    let value
+    if (raw.startsWith("'")) value = raw.slice(1, -1).replace(/''/g, "'").replace(/\\(.)/g, (_m, char) => escapes[char] ?? char)
+    else if (/^null$/i.test(raw)) value = null
+    else if (/^(true|false)$/i.test(raw)) value = raw.toLowerCase() === 'true'
+    else value = Number(raw)
+    result[key.replace(/``/g, '`')] = value
+    end = pattern.lastIndex
+    if (!comma) break
+  }
+  return end && end >= text.trimEnd().length ? JSON.stringify(result) : null
+}
+
+/** Fixes values of JSON columns that are not valid JSON (see repairJson); unrecoverable ones become {}. */
+async function repairJsonColumns(connection, jsonColumns) {
+  for (const { table, column } of jsonColumns) {
+    const t = `\`${table}\``
+    const c = `\`${column}\``
+    const [rows] = await connection.query(`SELECT DISTINCT ${c} AS v FROM ${t} WHERE ${c} IS NOT NULL AND NOT JSON_VALID(${c})`)
+    for (const { v } of rows) {
+      await connection.query(`UPDATE ${t} SET ${c} = ? WHERE ${c} = ?`, [repairJson(String(v)) || '{}', v])
+    }
+  }
 }
 
 /** Runs the statements in batches small enough for MySQL's packet limit. */
-async function runSql(input) {
+/** Drops every table and view of the system's database, leaving it empty for a full restore. */
+async function dropEverything(connection) {
+  const [rows] = await connection.query(
+    'SELECT TABLE_NAME AS name, TABLE_TYPE AS type FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+  )
+  for (const row of rows.filter((item) => item.type === 'VIEW')) await connection.query(`DROP VIEW IF EXISTS \`${row.name}\``)
+  for (const row of rows.filter((item) => item.type !== 'VIEW')) await connection.query(`DROP TABLE IF EXISTS \`${row.name}\``)
+}
+
+/**
+ * Runs a dump. With `replace`, the current database is emptied first, so it ends up exactly
+ * as the file describes (no leftover tables or rows from before).
+ */
+async function runSql(input, { replace = false } = {}) {
   let statements = input
   const connection = await mysql.createConnection({ ...config.db, multipleStatements: true, charset: 'utf8mb4' })
   try {
-    statements = await adaptToServer(connection, statements)
+    const adapted = await adaptToServer(connection, statements)
+    statements = adapted.statements
     await connection.query('SET FOREIGN_KEY_CHECKS = 0')
+    if (replace) await dropEverything(connection)
     let batch = []
     let size = 0
     const flush = async () => {
@@ -130,6 +192,7 @@ async function runSql(input) {
       size += statement.length
     }
     await flush()
+    await repairJsonColumns(connection, adapted.jsonColumns)
     await connection.query('SET FOREIGN_KEY_CHECKS = 1')
   } finally {
     await connection.end()
@@ -183,6 +246,15 @@ async function countRows(db, table) {
 
 const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-')
 
+/**
+ * Value as it must be written in a dump. JSON columns arrive as objects on MySQL 8; escaping an
+ * object would produce `key` = 'value' pairs (invalid JSON), so they are written as JSON text.
+ */
+function sqlValue(value) {
+  if (value && typeof value === 'object' && !(value instanceof Date) && !Buffer.isBuffer(value)) return JSON.stringify(value)
+  return value
+}
+
 /** Full SQL dump (structure + data) that can be restored from phpMyAdmin or the mysql client. */
 export async function buildSqlDump() {
   const db = getPool()
@@ -205,7 +277,7 @@ export async function buildSqlDump() {
     if (!rows.length) continue
     const columns = Object.keys(rows[0]).map((column) => `\`${column}\``).join(', ')
     for (let start = 0; start < rows.length; start += 200) {
-      const values = rows.slice(start, start + 200).map((row) => `(${Object.values(row).map((value) => db.escape(value)).join(', ')})`)
+      const values = rows.slice(start, start + 200).map((row) => `(${Object.values(row).map((value) => db.escape(sqlValue(value))).join(', ')})`)
       lines.push(`INSERT INTO \`${table}\` (${columns}) VALUES\n${values.join(',\n')};`)
     }
     lines.push('')
@@ -234,7 +306,7 @@ async function buildWorkbook() {
     for (const row of rows) {
       sheet.addRow(Object.fromEntries(columns.map((column) => {
         const value = row[column]
-        return [column, Buffer.isBuffer(value) ? value.toString('base64') : value]
+        return [column, Buffer.isBuffer(value) ? value.toString('base64') : sqlValue(value)]
       })))
     }
   }
@@ -300,15 +372,28 @@ export function adminRouter({ afterImport } = {}) {
       return res.status(400).json({ ok: false, error: 'El archivo no contiene tablas ni datos para importar.' })
     }
 
+    // The whole database is replaced by the file. If anything fails, the copy taken here is put back.
     const backup = await saveBackup('antes-de-importar')
     try {
-      await runSql(statements)
+      await runSql(statements, { replace: true })
     } catch (error) {
       console.error(error)
+      const reason = error.sqlMessage || error.message
+      let restored = false
+      try {
+        await runSql(splitSql(fs.readFileSync(path.join(backupDir, backup), 'utf8')), { replace: true })
+        restored = true
+      } catch (restoreError) {
+        console.error(restoreError)
+      }
+      if (afterImport) await afterImport().catch((ensureError) => console.error(ensureError))
       return res.status(400).json({
         ok: false,
-        error: `La importación se detuvo por un error de MySQL (${error.sqlMessage || error.message}). Puedes restaurar la copia previa ${backup} desde esta misma opción.`,
+        error: restored
+          ? `No se pudo importar por un error de MySQL (${reason}). La base de datos volvió a como estaba antes de importar.`
+          : `No se pudo importar por un error de MySQL (${reason}) y tampoco se pudo restaurar automáticamente. Importa la copia ${backup} desde esta misma opción.`,
         backup,
+        restored,
       })
     }
     if (afterImport) await afterImport()

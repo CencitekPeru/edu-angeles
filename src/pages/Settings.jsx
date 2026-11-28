@@ -127,7 +127,7 @@ export default function SettingsPage() {
       <Panel title="Importar base de datos" icon={HardDriveUpload}>
         <div className="mb-4 flex gap-3 rounded-lg border border-[#ead9b8] bg-[#fbf6ec] p-3 text-sm text-[#7a4f10] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <p>Restaura una copia de seguridad <span className="font-semibold">.sql</span> (la que descargas arriba o una de phpMyAdmin). Las tablas que vengan en el archivo <span className="font-semibold">reemplazan</span> a las actuales. Antes de importar, el sistema guarda automáticamente una copia de la base actual en el servidor.</p>
+          <p>Restaura una copia de seguridad <span className="font-semibold">.sql</span> (la que descargas arriba o una de phpMyAdmin). La base de datos actual se <span className="font-semibold">reemplaza por completo</span> con la del archivo: se borran todas las tablas y datos actuales. Antes de importar, el sistema guarda automáticamente una copia en el servidor y, si la importación falla, la restaura sola.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border p-3 text-sm transition-colors hover:bg-muted/50">
@@ -191,7 +191,7 @@ export default function SettingsPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2"><HardDriveUpload className="size-5 text-primary" /> Confirmar importación</DialogTitle>
             <DialogDescription>
-              Se importará <span className="font-semibold text-foreground">{importFile?.name}</span>. Los datos actuales de las tablas incluidas en el archivo se reemplazarán. Si tu cuenta no está en la copia, se cerrará tu sesión.
+              Se importará <span className="font-semibold text-foreground">{importFile?.name}</span>. Toda la base de datos actual se borrará y quedará igual que el archivo. Si tu cuenta no está en la copia, se cerrará tu sesión.
             </DialogDescription>
           </DialogHeader>
           <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); importDatabase() }}>
