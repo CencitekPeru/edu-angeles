@@ -21,25 +21,58 @@ const sqlUpload = multer({
   limits: { fileSize: 200 * 1024 * 1024, files: 1 },
 })
 
+/** Text of an uploaded dump: UTF-8 (with or without BOM) or UTF-16, as some Windows tools save it. */
+function decodeDump(buffer) {
+  if (buffer[0] === 0xff && buffer[1] === 0xfe) return buffer.subarray(2).toString('utf16le')
+  if (buffer[0] === 0xfe && buffer[1] === 0xff) return Buffer.from(buffer.subarray(2)).swap16().toString('utf16le')
+  // UTF-16 without BOM: every other byte of the ASCII text is zero.
+  const sample = buffer.subarray(0, 200)
+  if (sample.length > 10 && sample.filter((byte, index) => index % 2 === 1 && byte === 0).length > sample.length / 4) return buffer.toString('utf16le')
+  return buffer.toString('utf8').replace(/^﻿/, '')
+}
+
 /**
- * Splits a dump into statements. Dumps (this system's and phpMyAdmin's) end every statement with
- * `;` at the end of a line, and escape newlines inside strings, so a line ending in `;` closes a statement.
+ * Splits a dump into statements, reading it character by character so that `;`, quotes and comment
+ * marks inside strings are respected. Plain comments are dropped; MySQL's `/*! ... *\/` hints are kept.
  */
 function splitSql(sql) {
   const statements = []
-  let current = []
-  for (const line of sql.replace(/^﻿/, '').split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!current.length && (!trimmed || trimmed.startsWith('--') || trimmed.startsWith('#'))) continue
-    current.push(line)
-    if (trimmed.endsWith(';')) {
-      statements.push(current.join('\n'))
-      current = []
+  let current = ''
+  let quote = ''
+  for (let i = 0; i < sql.length; i += 1) {
+    const char = sql[i]
+    const next = sql[i + 1]
+    if (quote) {
+      current += char
+      if (char === '\\' && quote !== '`') { current += next ?? ''; i += 1 }
+      else if (char === quote) {
+        if (next === quote) { current += next; i += 1 } else quote = ''
+      }
+      continue
     }
+    if (char === "'" || char === '"' || char === '`') { quote = char; current += char; continue }
+    if ((char === '-' && next === '-' && /\s/.test(sql[i + 2] ?? ' ')) || char === '#') {
+      const end = sql.indexOf('\n', i)
+      i = end === -1 ? sql.length : end
+      current += '\n'
+      continue
+    }
+    if (char === '/' && next === '*' && sql[i + 2] !== '!') {
+      const end = sql.indexOf('*/', i + 2)
+      i = end === -1 ? sql.length : end + 1
+      current += ' '
+      continue
+    }
+    if (char === ';') {
+      if (current.trim()) statements.push(current.trim())
+      current = ''
+      continue
+    }
+    current += char
   }
-  if (current.join('').trim()) statements.push(current.join('\n'))
+  if (current.trim()) statements.push(current.trim())
   // Never let a dump switch or drop databases: it is always loaded into the system's own database.
-  return statements.filter((statement) => !/^\s*(USE|CREATE\s+DATABASE|CREATE\s+SCHEMA|DROP\s+DATABASE|DROP\s+SCHEMA)\b/i.test(statement))
+  return statements.filter((statement) => !/^(USE|CREATE\s+(DATABASE|SCHEMA)|DROP\s+(DATABASE|SCHEMA)|DELIMITER)\b/i.test(statement))
 }
 
 /** Runs the statements in batches small enough for MySQL's packet limit. */
@@ -57,7 +90,7 @@ async function runSql(statements) {
     }
     for (const statement of statements) {
       if (size + statement.length > 4 * 1024 * 1024) await flush()
-      batch.push(statement.trim().endsWith(';') ? statement : `${statement};`)
+      batch.push(`${statement};`)
       size += statement.length
     }
     await flush()
@@ -226,8 +259,8 @@ export function adminRouter({ afterImport } = {}) {
     }
     if (!req.file) return res.status(400).json({ ok: false, error: 'Selecciona un archivo .sql.' })
     if (!/\.sql$/i.test(req.file.originalname || '')) return res.status(400).json({ ok: false, error: 'El archivo debe ser una copia de seguridad .sql.' })
-    const statements = splitSql(req.file.buffer.toString('utf8'))
-    if (!statements.some((statement) => /^\s*(CREATE\s+TABLE|INSERT\s+INTO)/i.test(statement))) {
+    const statements = splitSql(decodeDump(req.file.buffer))
+    if (!statements.some((statement) => /^(CREATE\s+TABLE|INSERT\b|REPLACE\b)/i.test(statement))) {
       return res.status(400).json({ ok: false, error: 'El archivo no contiene tablas ni datos para importar.' })
     }
 
