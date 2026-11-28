@@ -82,18 +82,34 @@ const CARD_TONE = {
   slate: 'from-slate-50 to-slate-100/60 border-slate-200 text-slate-700 dark:from-slate-500/10 dark:to-transparent dark:border-slate-500/20',
 }
 
+/** A titled group of the summary: the students' block or the guardian's own block. */
+function PortalBlock({ icon: Icon, title, description, children }) {
+  return (
+    <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <header className="flex items-start gap-3 border-b border-border bg-slate-50 px-4 py-3 sm:px-5 dark:bg-muted/50">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Icon className="size-5" /></span>
+        <div className="min-w-0">
+          <h2 className="text-base font-bold leading-tight sm:text-lg">{title}</h2>
+          <p className="text-xs text-muted-foreground sm:text-sm">{description}</p>
+        </div>
+      </header>
+      <div className="space-y-4 p-3 sm:p-5">{children}</div>
+    </section>
+  )
+}
+
 /** Summary card that opens its own section. */
-function SummaryCard({ icon: Icon, value, label, hint, tone, onClick }) {
+function SummaryCard({ icon: Icon, value, label, hint, tone, onClick, className }) {
   return (
     <button type="button" onClick={onClick}
-      className={cn('group flex items-center gap-3 rounded-xl border bg-gradient-to-br p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none', CARD_TONE[tone])}>
-      <Icon className="size-8 shrink-0" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-2xl font-black text-foreground">{value}</span>
-        <span className="block text-sm font-medium text-foreground/80">{label}</span>
-        {hint && <span className="block text-xs text-foreground/60">{hint}</span>}
+      className={cn(className, 'group flex min-w-0 flex-col items-start gap-2 rounded-xl border bg-gradient-to-br p-3 text-left transition hover:-translate-y-0.5 hover:shadow-md focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-3 sm:p-4', CARD_TONE[tone])}>
+      <Icon className="size-6 shrink-0 sm:size-8" />
+      <span className="w-full min-w-0 flex-1">
+        <span className="block truncate text-xl font-black text-foreground tabular-nums sm:text-2xl">{value}</span>
+        <span className="block text-[13px] font-medium leading-tight text-foreground/80 sm:text-sm">{label}</span>
+        {hint && <span className="mt-0.5 block truncate text-[11px] text-foreground/60 sm:text-xs">{hint}</span>}
       </span>
-      <ChevronRight className="size-5 shrink-0 opacity-40 transition group-hover:translate-x-0.5 group-hover:opacity-80" aria-hidden />
+      <ChevronRight className="hidden size-5 shrink-0 opacity-40 transition group-hover:translate-x-0.5 group-hover:opacity-80 sm:block" aria-hidden />
     </button>
   )
 }
@@ -103,7 +119,20 @@ const ATTENDANCE_LABEL = { presente: 'Asistió', tardanza: 'Tardanza', falta: 'F
 function AttendanceTable({ records, loading, empty }) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-      <div className="max-h-[560px] overflow-auto">
+      <ul className="divide-y divide-border sm:hidden">
+        {records.map((row) => (
+          <li key={row.date} className="space-y-1 px-3 py-2.5 text-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-semibold tabular-nums">{dmy(row.date)}</span>
+              <StatusChip status={row.status} justified={row.justified} />
+            </div>
+            <p className="text-xs text-muted-foreground">Ingreso: {row.time ? ampm(row.time) : '—'}{row.note ? ` · ${row.note}` : ''}</p>
+          </li>
+        ))}
+        {!loading && !records.length && <li className="px-4 py-8 text-center text-sm text-muted-foreground">{empty}</li>}
+        {loading && <li className="px-4 py-8 text-center text-sm text-muted-foreground">Cargando…</li>}
+      </ul>
+      <div className="hidden max-h-[560px] overflow-auto sm:block">
         <table className="w-full text-sm">
           <thead className={cn(tableHead, 'sticky top-0')}><tr><th className={th}>Fecha</th><th className={th}>Hora de ingreso</th><th className={th}>Estado</th><th className={th}>Observación</th></tr></thead>
           <tbody>
@@ -178,7 +207,7 @@ export default function ParentPortal() {
   const childSection = ['presente', 'tardanza', 'inasistencia', 'asistencia', 'justificaciones'].includes(section)
   const monthLabel = monthOptions().find((option) => option.value === month)?.label.toLowerCase() || ''
   const monthPicker = (
-    <select value={month} onChange={(event) => setMonth(event.target.value)} className="h-9 rounded-md border border-input bg-card px-3 text-sm" aria-label="Mes">
+    <select value={month} onChange={(event) => setMonth(event.target.value)} className="h-9 w-full rounded-md border border-input bg-card px-3 text-sm sm:w-auto" aria-label="Mes">
       {monthOptions().map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
   )
@@ -188,12 +217,12 @@ export default function ParentPortal() {
       {/* `me` is still null on the first render, before the guardian's data arrives. */}
       {(me?.children || []).map((item) => (
         <button key={item.id} type="button" onClick={() => setChildId(item.id)} aria-pressed={item.id === childId}
-          className={cn('flex items-center gap-3 rounded-xl border bg-card p-3 text-left shadow-sm transition', item.id === childId ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/40')}>
-          {item.photo ? <img src={item.photo} alt="" className="size-14 rounded-lg object-cover" /> : <span className="flex size-14 items-center justify-center rounded-lg bg-slate-200 text-slate-500 dark:bg-slate-700"><UserRound className="size-7" /></span>}
+          className={cn('flex min-w-0 items-center gap-3 rounded-xl border bg-card p-3 text-left shadow-sm transition', item.id === childId ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/40')}>
+          {item.photo ? <img src={item.photo} alt="" className="size-12 shrink-0 rounded-lg object-cover sm:size-14" /> : <span className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-slate-200 text-slate-500 sm:size-14 dark:bg-slate-700"><UserRound className="size-6 sm:size-7" /></span>}
           <span className="min-w-0 flex-1">
-            <span className="block truncate font-bold">{item.fullName}</span>
+            <span className="block truncate text-sm font-bold sm:text-base">{item.fullName}</span>
             <span className="flex items-center gap-1 text-xs text-muted-foreground"><GraduationCap className="size-3.5" /> {item.level} – {item.grade} {item.section}</span>
-            <span className="mt-1 flex items-center gap-1.5 text-xs">
+            <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
               Hoy: {item.today ? <StatusChip status={item.today.status} justified={item.today.justified} /> : <span className="text-muted-foreground">Sin registro aún</span>}
               {item.today?.time && <span className="text-muted-foreground">{ampm(item.today.time)}</span>}
             </span>
@@ -206,64 +235,68 @@ export default function ParentPortal() {
   return (
     <div className="min-h-svh bg-[#f3f6fb] text-foreground dark:bg-background">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-[#0b1730] text-white">
-        <div className="mx-auto flex h-16 max-w-6xl items-center gap-3 px-4">
-          <img src={schoolLogo} alt="" className="size-10 rounded-lg bg-white object-contain p-0.5" />
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
+          <img src={schoolLogo} alt="" className="size-9 shrink-0 rounded-lg bg-white object-contain p-0.5 sm:size-10" />
           <div className="min-w-0 flex-1 leading-tight">
-            <p className="truncate font-extrabold uppercase">{SCHOOL.name}</p>
-            <p className="text-xs text-white/70">Portal de Padres y Apoderados</p>
+            <p className="truncate text-sm font-extrabold uppercase sm:text-base">{SCHOOL.name}</p>
+            <p className="truncate text-[11px] text-white/70 sm:text-xs">{me?.guardian.name ? <span className="sm:hidden">{me.guardian.name} · </span> : null}Portal de Padres y Apoderados</p>
           </div>
           <span className="hidden text-right text-sm sm:block">
             <span className="block font-semibold">{me?.guardian.name || 'Apoderado'}</span>
             <span className="text-xs text-white/70">DNI {me?.guardian.dni}</span>
           </span>
           <ThemeToggle />
-          <Button type="button" variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={logout}><LogOut /> <span className="hidden md:inline">Salir</span></Button>
+          <Button type="button" variant="ghost" size="sm" className="text-white hover:bg-white/10 hover:text-white" onClick={logout}><LogOut /> <span className="hidden md:inline">Salir</span><span className="sr-only md:hidden">Salir</span></Button>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl space-y-5 px-4 py-6">
+      <main className="mx-auto max-w-6xl space-y-4 px-3 py-4 sm:space-y-5 sm:px-4 sm:py-6">
         {!section && (
           <>
             <div>
-              <h1 className="text-2xl font-extrabold tracking-tight">Consulta de Asistencia</h1>
+              <h1 className="text-xl font-extrabold tracking-tight sm:text-2xl">Consulta de Asistencia</h1>
               <p className="text-sm text-muted-foreground">{longDate(todayLima())}</p>
             </div>
 
             {me && (
-              <button type="button" onClick={() => open('deudas')} className="block w-full text-left transition hover:opacity-90">
-                <DebtBanner pendingAmount={debt.pendingAmount} pendingCount={debt.pendingCount} />
-              </button>
-            )}
-
-            {me && !me.children.length && (
-              <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                <AlertCircle className="size-5 shrink-0" /> Aún no tienes estudiantes vinculados a tu DNI. Comunícate con la coordinación de la institución.
-              </div>
-            )}
-
-            {me && me.children.length > 0 && childCards}
-
-            {child && (
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-bold">Resumen de {child.firstNames}</h2>
-                {monthPicker}
-              </div>
+              <PortalBlock icon={GraduationCap} title="Mis estudiantes" description="Asistencia, tardanzas y justificaciones de cada estudiante a tu cargo.">
+                {!me.children.length ? (
+                  <div className="flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    <AlertCircle className="size-5 shrink-0" /> Aún no tienes estudiantes vinculados a tu DNI. Comunícate con la coordinación de la institución.
+                  </div>
+                ) : (
+                  <>
+                    {childCards}
+                    {child && (
+                      <div className="space-y-3 border-t border-border pt-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h3 className="min-w-0 text-sm font-bold sm:text-base">Asistencia de {child.firstNames}</h3>
+                          {monthPicker}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-5">
+                          <SummaryCard className="col-span-2 lg:col-span-1" icon={Percent} value={`${pct(totals).toFixed(1)} %`} label="Asistencia del mes" hint="Ver historial completo" tone="blue" onClick={() => open('asistencia')} />
+                          <SummaryCard icon={CheckCircle2} value={totals.presente} label="Presentes" tone="green" onClick={() => open('presente')} />
+                          <SummaryCard icon={Clock} value={totals.tardanza} label="Tardanzas" tone="amber" onClick={() => open('tardanza')} />
+                          <SummaryCard icon={XCircle} value={totals.inasistencia} label="Inasistencias" hint={totals.justificadas ? `${totals.justificadas} justificadas` : undefined} tone="rose" onClick={() => open('inasistencia')} />
+                          <SummaryCard icon={FileCheck2} value={history?.justifications?.length ?? '—'} label="Justificaciones" tone="slate" onClick={() => open('justificaciones')} />
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </PortalBlock>
             )}
 
             {me && (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {child && (
-                  <>
-                    <SummaryCard icon={CheckCircle2} value={totals.presente} label="Presentes" tone="green" onClick={() => open('presente')} />
-                    <SummaryCard icon={Clock} value={totals.tardanza} label="Tardanzas" tone="amber" onClick={() => open('tardanza')} />
-                    <SummaryCard icon={XCircle} value={totals.inasistencia} label="Inasistencias" hint={totals.justificadas ? `${totals.justificadas} justificadas` : undefined} tone="rose" onClick={() => open('inasistencia')} />
-                    <SummaryCard icon={Percent} value={`${pct(totals).toFixed(1)} %`} label="Asistencia del mes" hint="Ver historial completo" tone="blue" onClick={() => open('asistencia')} />
-                    <SummaryCard icon={FileCheck2} value={history?.justifications?.length ?? '—'} label="Justificaciones" tone="slate" onClick={() => open('justificaciones')} />
-                  </>
-                )}
-                <SummaryCard icon={Wallet} value={soles(debt.pendingAmount)} label="Deudas por multas" hint={debt.pendingCount ? `${debt.pendingCount} pendiente(s)` : 'Al día'} tone={debt.pendingCount ? 'rose' : 'green'} onClick={() => open('deudas')} />
-                <SummaryCard icon={Users} value={meetings.upcoming.length} label="Próximas reuniones" hint={`${meetings.held.length} reuniones registradas`} tone="slate" onClick={() => open('reuniones')} />
-              </div>
+              <PortalBlock icon={UserRound} title="Como apoderado" description="Tus multas pendientes y las reuniones o asambleas convocadas por la institución.">
+                <button type="button" onClick={() => open('deudas')} className="block w-full text-left transition hover:opacity-90">
+                  <DebtBanner pendingAmount={debt.pendingAmount} pendingCount={debt.pendingCount} />
+                </button>
+                <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+                  <SummaryCard icon={Wallet} value={soles(debt.pendingAmount)} label="Deudas por multas" hint={debt.pendingCount ? `${debt.pendingCount} pendiente(s)` : 'Al día'} tone={debt.pendingCount ? 'rose' : 'green'} onClick={() => open('deudas')} />
+                  <SummaryCard icon={Users} value={meetings.upcoming.length} label="Próximas reuniones" hint={`${meetings.held.length} reuniones registradas`} tone="slate" onClick={() => open('reuniones')} />
+                </div>
+              </PortalBlock>
             )}
           </>
         )}
@@ -271,9 +304,9 @@ export default function ParentPortal() {
         {section && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex items-center gap-3">
+              <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
                 <Button type="button" variant="outline" size="sm" onClick={back}><ArrowLeft /> Volver al resumen</Button>
-                <h1 className="flex items-center gap-2 text-xl font-extrabold tracking-tight">
+                <h1 className="flex items-center gap-2 text-lg font-extrabold tracking-tight sm:text-xl">
                   {(() => { const Icon = SECTIONS[section].icon; return <Icon className="size-5 text-primary" /> })()}
                   {SECTIONS[section].title}
                 </h1>
@@ -326,13 +359,29 @@ export default function ParentPortal() {
             {section === 'deudas' && (
               <>
                 <DebtBanner pendingAmount={debt.pendingAmount} pendingCount={debt.pendingCount} />
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
                   {[['Deuda pendiente', soles(debt.pendingAmount)], ['Multas pendientes', debt.pendingCount],
                     ['Total pagado', soles(debt.fines.filter((fine) => fine.status === 'Pagada').reduce((total, fine) => total + fine.amount, 0))]].map(([label, value]) => (
                     <div key={label} className="rounded-lg border border-border bg-card p-3"><p className="text-xl font-black tabular-nums">{value}</p><p className="text-xs text-muted-foreground">{label}</p></div>
                   ))}
                 </div>
-                <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <ul className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card shadow-sm sm:hidden">
+                  {debt.fines.map((fine) => (
+                    <li key={fine.id} className="space-y-1 px-3 py-2.5 text-sm">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 font-semibold">{fine.concept}</span>
+                        <span className="shrink-0 font-bold tabular-nums">{soles(fine.amount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span className="tabular-nums">{dmy(fine.issuedOn)}</span>
+                        <Pill value={fine.status} />
+                      </div>
+                      {fine.status !== 'Pendiente' && <p className="text-xs text-muted-foreground">{fine.status === 'Pagada' ? `Pagada el ${dmy(fine.paidOn)}${fine.receipt ? ` · Recibo ${fine.receipt}` : ''}` : fine.note || fine.status}</p>}
+                    </li>
+                  ))}
+                  {!debt.fines.length && <li className="px-4 py-8 text-center text-sm text-muted-foreground">No tienes multas registradas.</li>}
+                </ul>
+                <div className="hidden overflow-x-auto rounded-xl border border-border bg-card shadow-sm sm:block">
                   <table className="w-full text-sm">
                     <thead className={tableHead}><tr><th className={th}>Fecha</th><th className={th}>Concepto</th><th className={th}>Monto</th><th className={th}>Estado</th><th className={th}>Detalle</th></tr></thead>
                     <tbody>

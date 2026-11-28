@@ -60,7 +60,21 @@ app.use(activitiesRouter())
 app.use(documentsRouter())
 app.use(guardianMeetingsRouter())
 app.use(classAttendanceRouter())
-app.use(adminRouter())
+app.use(adminRouter({
+  // An imported dump may predate newer tables and columns: bring it up to the current structure.
+  afterImport: async () => {
+    await ensureCampus()
+    await ensureAttendance()
+    await ensurePsychology()
+    await ensureAssets()
+    await ensureActivities()
+    await ensureParents()
+    await ensureDocuments()
+    await ensureGuardianMeetings()
+    await ensureClassAttendance()
+    await ensureRoles()
+  },
+}))
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
 

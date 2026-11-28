@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Database, DatabaseBackup, Eraser, FileSpreadsheet, HardDriveDownload, History, Settings } from 'lucide-react'
-import { api, download } from '../lib/api'
+import { AlertTriangle, Database, DatabaseBackup, Eraser, FileSpreadsheet, HardDriveDownload, HardDriveUpload, History, Settings, Upload } from 'lucide-react'
+import { api, download, getToken } from '../lib/api'
 import { useApp } from '../context/AppContext'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -22,13 +22,17 @@ function withDependencies(chosen, groups) {
 }
 
 export default function SettingsPage() {
-  const { toast, refresh, refreshRooms } = useApp()
+  const { toast, refresh, refreshRooms, logout } = useApp()
   const [info, setInfo] = useState(null)
   const [chosen, setChosen] = useState([])
   const [exporting, setExporting] = useState('')
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [confirmation, setConfirmation] = useState('')
   const [cleaning, setCleaning] = useState(false)
+  const [importFile, setImportFile] = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
+  const [importConfirmation, setImportConfirmation] = useState('')
+  const [importing, setImporting] = useState(false)
 
   async function load() {
     const result = await api('/api/admin/database')
@@ -66,11 +70,36 @@ export default function SettingsPage() {
     await Promise.all([load(), refresh(), refreshRooms()])
   }
 
+  async function importDatabase() {
+    setImporting(true)
+    const body = new FormData()
+    body.append('file', importFile)
+    body.append('confirmation', importConfirmation)
+    let result
+    try {
+      const response = await fetch('/api/admin/import', { method: 'POST', headers: getToken() ? { Authorization: `Bearer ${getToken()}` } : {}, body })
+      result = { ...(await response.json().catch(() => ({}))), ok: response.ok }
+    } catch {
+      result = { ok: false, error: 'No hay conexión con el servidor.' }
+    }
+    setImporting(false)
+    if (!result.ok) return toast(result.error || 'No se pudo importar la base de datos.', 'bad')
+    setImportOpen(false)
+    setImportFile(null)
+    setImportConfirmation('')
+    if (result.signedOut) {
+      toast('Base de datos importada. Tu cuenta no está en la copia importada: inicia sesión con una cuenta de esa copia.')
+      return logout()
+    }
+    toast(`Base de datos importada. Copia previa guardada: ${result.backup}`)
+    await Promise.all([load(), refresh(), refreshRooms()])
+  }
+
   const requiredBy = (key) => groups.filter((group) => chosen.includes(group.key) && withDependencies([group.key], groups).has(key) && group.key !== key)
 
   return (
     <div className="space-y-5">
-      <PageHeader icon={Settings} title="Configuración" description="Copias de seguridad, exportación y limpieza de la base de datos del sistema." />
+      <PageHeader icon={Settings} title="Configuración" description="Copias de seguridad, exportación, importación y limpieza de la base de datos del sistema." />
 
       <Panel title="Exportar base de datos" icon={HardDriveDownload}>
         <p className="mb-4 text-sm text-muted-foreground">
@@ -93,6 +122,23 @@ export default function SettingsPage() {
           />
         </div>
         <p className="mt-3 text-xs text-muted-foreground">Las fotos y archivos adjuntos no están en la base de datos: se guardan en la carpeta <code>server/uploads</code> del servidor.</p>
+      </Panel>
+
+      <Panel title="Importar base de datos" icon={HardDriveUpload}>
+        <div className="mb-4 flex gap-3 rounded-lg border border-[#ead9b8] bg-[#fbf6ec] p-3 text-sm text-[#7a4f10] dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <p>Restaura una copia de seguridad <span className="font-semibold">.sql</span> (la que descargas arriba o una de phpMyAdmin). Las tablas que vengan en el archivo <span className="font-semibold">reemplazan</span> a las actuales. Antes de importar, el sistema guarda automáticamente una copia de la base actual en el servidor.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-lg border border-dashed border-border p-3 text-sm transition-colors hover:bg-muted/50">
+            <Upload className="size-5 shrink-0 text-primary" />
+            <span className="min-w-0 truncate">{importFile ? <><span className="font-semibold">{importFile.name}</span> <span className="text-muted-foreground">({(importFile.size / 1024 / 1024).toFixed(2)} MB)</span></> : <span className="text-muted-foreground">Selecciona el archivo .sql…</span>}</span>
+            <input type="file" accept=".sql" className="sr-only" onChange={(event) => { setImportFile(event.target.files?.[0] || null); event.target.value = '' }} />
+          </label>
+          <Button type="button" disabled={!importFile} onClick={() => { setImportConfirmation(''); setImportOpen(true) }}>
+            <HardDriveUpload /> Importar base de datos
+          </Button>
+        </div>
       </Panel>
 
       <Panel title="Limpiar base de datos" icon={Eraser}>
@@ -133,12 +179,35 @@ export default function SettingsPage() {
 
       {info?.backups?.length > 0 && (
         <Panel title="Copias automáticas en el servidor" icon={History}>
-          <p className="mb-3 text-xs text-muted-foreground">Guardadas en la carpeta <code>server/backups</code> antes de cada limpieza (se muestran las 10 más recientes).</p>
+          <p className="mb-3 text-xs text-muted-foreground">Guardadas en la carpeta <code>server/backups</code> antes de cada limpieza o importación (se muestran las 10 más recientes).</p>
           <ul className="space-y-1.5 text-sm">
             {info.backups.map((file) => <li key={file} className="flex items-center gap-2"><Database className="size-4 text-muted-foreground" />{file}</li>)}
           </ul>
         </Panel>
       )}
+
+      <Dialog open={importOpen} onOpenChange={(next) => { if (!importing) setImportOpen(next) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><HardDriveUpload className="size-5 text-primary" /> Confirmar importación</DialogTitle>
+            <DialogDescription>
+              Se importará <span className="font-semibold text-foreground">{importFile?.name}</span>. Los datos actuales de las tablas incluidas en el archivo se reemplazarán. Si tu cuenta no está en la copia, se cerrará tu sesión.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-2" onSubmit={(event) => { event.preventDefault(); importDatabase() }}>
+            <label className="grid gap-1.5 text-sm">
+              <span>Para confirmar, escribe <span className="font-bold">{info?.importConfirmation}</span></span>
+              <Input autoFocus value={importConfirmation} onChange={(event) => setImportConfirmation(event.target.value)} autoComplete="off" />
+            </label>
+            <DialogFooter className="pt-2">
+              <Button type="button" variant="outline" disabled={importing} onClick={() => setImportOpen(false)}>Cancelar</Button>
+              <Button type="submit" disabled={importing || !info?.importConfirmation || importConfirmation.trim().toUpperCase() !== info.importConfirmation}>
+                {importing ? 'Importando…' : 'Sí, importar'}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={confirmOpen} onOpenChange={(next) => { if (!cleaning) setConfirmOpen(next) }}>
         <DialogContent className="sm:max-w-lg">

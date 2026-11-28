@@ -2,6 +2,9 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import express from 'express'
+import multer from 'multer'
+import mysql from 'mysql2/promise'
+import { config } from './config.js'
 import { getPool } from './db.js'
 import { ensureCampus, requireAdmin, requireAuth } from './campus.js'
 
@@ -10,6 +13,59 @@ const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, 
 
 /** Word the admin must type to confirm a cleanup. */
 export const CLEAN_CONFIRMATION = 'LIMPIAR'
+/** Word the admin must type to confirm an import (it replaces the current data). */
+export const IMPORT_CONFIRMATION = 'IMPORTAR'
+
+const sqlUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 200 * 1024 * 1024, files: 1 },
+})
+
+/**
+ * Splits a dump into statements. Dumps (this system's and phpMyAdmin's) end every statement with
+ * `;` at the end of a line, and escape newlines inside strings, so a line ending in `;` closes a statement.
+ */
+function splitSql(sql) {
+  const statements = []
+  let current = []
+  for (const line of sql.replace(/^﻿/, '').split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!current.length && (!trimmed || trimmed.startsWith('--') || trimmed.startsWith('#'))) continue
+    current.push(line)
+    if (trimmed.endsWith(';')) {
+      statements.push(current.join('\n'))
+      current = []
+    }
+  }
+  if (current.join('').trim()) statements.push(current.join('\n'))
+  // Never let a dump switch or drop databases: it is always loaded into the system's own database.
+  return statements.filter((statement) => !/^\s*(USE|CREATE\s+DATABASE|CREATE\s+SCHEMA|DROP\s+DATABASE|DROP\s+SCHEMA)\b/i.test(statement))
+}
+
+/** Runs the statements in batches small enough for MySQL's packet limit. */
+async function runSql(statements) {
+  const connection = await mysql.createConnection({ ...config.db, multipleStatements: true, charset: 'utf8mb4' })
+  try {
+    await connection.query('SET FOREIGN_KEY_CHECKS = 0')
+    let batch = []
+    let size = 0
+    const flush = async () => {
+      if (!batch.length) return
+      await connection.query(batch.join('\n'))
+      batch = []
+      size = 0
+    }
+    for (const statement of statements) {
+      if (size + statement.length > 4 * 1024 * 1024) await flush()
+      batch.push(statement.trim().endsWith(';') ? statement : `${statement};`)
+      size += statement.length
+    }
+    await flush()
+    await connection.query('SET FOREIGN_KEY_CHECKS = 1')
+  } finally {
+    await connection.end()
+  }
+}
 
 /**
  * Data groups that can be cleaned. `requires` lists groups whose data points to this one,
@@ -124,7 +180,8 @@ async function saveBackup(reason) {
   return file
 }
 
-export function adminRouter() {
+/** `afterImport` brings an imported (possibly older) database up to the current structure. */
+export function adminRouter({ afterImport } = {}) {
   const router = express.Router()
 
   /** Record counts per cleanable group, for the settings page. */
@@ -144,7 +201,7 @@ export function adminRouter() {
     let totalRows = 0
     for (const table of tables) totalRows += await countRows(db, table)
     const backups = fs.existsSync(backupDir) ? fs.readdirSync(backupDir).filter((file) => file.endsWith('.sql')).sort().reverse().slice(0, 10) : []
-    res.json({ ok: true, groups, tables: tables.size, totalRows, backups, confirmation: CLEAN_CONFIRMATION })
+    res.json({ ok: true, groups, tables: tables.size, totalRows, backups, confirmation: CLEAN_CONFIRMATION, importConfirmation: IMPORT_CONFIRMATION })
   }))
 
   router.get('/api/admin/export.sql', requireAuth, requireAdmin, wrap(async (_req, res) => {
@@ -160,6 +217,34 @@ export function adminRouter() {
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     res.setHeader('Content-Disposition', `attachment; filename="${name}-${stamp()}.xlsx"`)
     res.send(Buffer.from(buffer))
+  }))
+
+  /** Restores a .sql dump over the current database, after saving a backup of it on the server. */
+  router.post('/api/admin/import', requireAuth, requireAdmin, sqlUpload.single('file'), wrap(async (req, res) => {
+    if (String(req.body.confirmation || '').trim().toUpperCase() !== IMPORT_CONFIRMATION) {
+      return res.status(400).json({ ok: false, error: `Escribe ${IMPORT_CONFIRMATION} para confirmar.` })
+    }
+    if (!req.file) return res.status(400).json({ ok: false, error: 'Selecciona un archivo .sql.' })
+    if (!/\.sql$/i.test(req.file.originalname || '')) return res.status(400).json({ ok: false, error: 'El archivo debe ser una copia de seguridad .sql.' })
+    const statements = splitSql(req.file.buffer.toString('utf8'))
+    if (!statements.some((statement) => /^\s*(CREATE\s+TABLE|INSERT\s+INTO)/i.test(statement))) {
+      return res.status(400).json({ ok: false, error: 'El archivo no contiene tablas ni datos para importar.' })
+    }
+
+    const backup = await saveBackup('antes-de-importar')
+    try {
+      await runSql(statements)
+    } catch (error) {
+      console.error(error)
+      return res.status(400).json({
+        ok: false,
+        error: `La importación se detuvo por un error de MySQL (${error.sqlMessage || error.message}). Puedes restaurar la copia previa ${backup} desde esta misma opción.`,
+        backup,
+      })
+    }
+    if (afterImport) await afterImport()
+    const [still] = await getPool().query('SELECT id FROM users WHERE id = ? AND active = 1', [req.user.id])
+    res.json({ ok: true, statements: statements.length, backup, signedOut: !still.length })
   }))
 
   /** Deletes the chosen groups (plus what depends on them) after saving a backup on the server. */
