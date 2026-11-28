@@ -19,26 +19,31 @@ const QUICK = [
   { to: '/admin/asistencia/reportes', title: 'Reportes', text: 'Ver y exportar informes', icon: BarChart3, tone: 'bg-slate-50 text-primary border-border dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/20' },
 ]
 
-function LateAfterSetting({ value, onSaved }) {
+/** Late-arrival time of one level: entries after it are recorded as «tardanza». */
+function LateAfterSetting({ level, value, canEdit, onSaved }) {
   const { toast } = useApp()
   const [time, setTime] = useState(value)
   const [busy, setBusy] = useState(false)
+  useEffect(() => { setTime(value) }, [value])
 
   async function save(event) {
     event.preventDefault()
     setBusy(true)
-    const result = await api('/api/attendance/settings', { method: 'PATCH', body: { lateAfter: time } })
+    const result = await api('/api/attendance/settings', { method: 'PATCH', body: { level, lateAfter: time } })
     setBusy(false)
     if (!result.ok) return toast(result.error || 'No se pudo guardar la hora.', 'bad')
-    toast(`Desde ahora, los ingresos después de las ${result.lateAfter} se registran como tardanza.`)
-    onSaved(result.lateAfter)
+    toast(`${level}: desde ahora, los ingresos después de las ${result.lateAfter} se registran como tardanza.`)
+    onSaved(result.lateAfterByLevel)
   }
 
   return (
-    <form onSubmit={save} className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-      Se considera tardanza todo ingreso después de las
-      <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-8 w-28" aria-label="Hora límite de ingreso" />
-      {time !== value && <Button type="submit" size="sm" disabled={busy}>Guardar</Button>}
+    <form onSubmit={save} className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-slate-50 px-3 py-2 text-xs dark:bg-muted/40">
+      <span className="w-20 font-semibold text-foreground">{level}</span>
+      <span className="text-muted-foreground">Tardanza después de las</span>
+      {canEdit
+        ? <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-8 w-28 bg-card" aria-label={`Hora límite de ingreso de ${level}`} />
+        : <b className="tabular-nums text-foreground">{value}</b>}
+      {canEdit && time !== value && <Button type="submit" size="sm" disabled={busy || !time}>Guardar</Button>}
     </form>
   )
 }
@@ -92,9 +97,15 @@ export default function AttendancePanel() {
               )
             })}
           </ul>
-          {data && (canEdit
-            ? <LateAfterSetting value={data.lateAfter} onSaved={(lateAfter) => setData({ ...data, lateAfter })} />
-            : <p className="text-xs text-muted-foreground">Se considera tardanza todo ingreso después de las <b>{data.lateAfter}</b>.</p>)}
+          {data?.lateAfterByLevel && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground">Hora límite de ingreso por nivel</p>
+              {['Primaria', 'Secundaria'].map((level) => (
+                <LateAfterSetting key={level} level={level} value={data.lateAfterByLevel[level]} canEdit={canEdit}
+                  onSaved={(lateAfterByLevel) => setData((current) => ({ ...current, lateAfterByLevel }))} />
+              ))}
+            </div>
+          )}
         </Panel>
 
         <Panel plain title="Resumen general del día" icon={CircleDashed}>

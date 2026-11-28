@@ -3,7 +3,7 @@ import express from 'express'
 import jwt from 'jsonwebtoken'
 import { config } from './config.js'
 import { getPool } from './db.js'
-import { getSetting, isDate, mapRecord, nowLima, schoolDays } from './attendance.js'
+import { isDate, lateAfterFor, mapRecord, nowLima, schoolDays } from './attendance.js'
 import { guardianDebt, guardianMeetingsFor } from './guardianMeetings.js'
 
 const wrap = (handler) => (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next)
@@ -65,7 +65,7 @@ export async function studentHistory(student, from, to) {
     [student.id, start, end],
   )
   const byDay = new Map(records.map((row) => [String(row.date).slice(0, 10), mapRecord(row)]))
-  const lateAfter = await getSetting('attendance_late_after', '07:45')
+  const lateAfter = await lateAfterFor(student.level)
   const rows = []
   if (start <= end) {
     for (const day of schoolDays(start, end)) {

@@ -151,6 +151,25 @@ export async function getSetting(key, fallback) {
   return rows[0]?.v ?? fallback
 }
 
+const LATE_KEY = { Primaria: 'attendance_late_after_primaria', Secundaria: 'attendance_late_after_secundaria' }
+
+/**
+ * Late-arrival time of each level. A level without its own time keeps the former single
+ * setting (`attendance_late_after`), so nothing changes until a level is edited.
+ */
+export async function lateAfterByLevel() {
+  const common = await getSetting('attendance_late_after', '07:45')
+  return {
+    Primaria: await getSetting(LATE_KEY.Primaria, common),
+    Secundaria: await getSetting(LATE_KEY.Secundaria, common),
+  }
+}
+
+/** Late-arrival time for a student's level. */
+export async function lateAfterFor(level) {
+  return (await lateAfterByLevel())[level] || getSetting('attendance_late_after', '07:45')
+}
+
 async function audit(connection, { attendanceId, studentId, date, action, oldStatus, newStatus, reason, userId }) {
   await connection.query(
     `INSERT INTO attendance_audit (attendance_id, student_id, date, action, old_status, new_status, reason, user_id)
@@ -262,14 +281,17 @@ export function attendanceRouter() {
 
   /* ---------- Settings ---------- */
   router.get('/api/attendance/settings', wrap(async (_req, res) => {
-    res.json({ ok: true, lateAfter: await getSetting('attendance_late_after', '07:45') })
+    res.json({ ok: true, lateAfterByLevel: await lateAfterByLevel() })
   }))
 
+  /** Sets the late-arrival time of one level (Primaria / Secundaria). */
   router.patch('/api/attendance/settings', wrap(async (req, res) => {
+    const level = String(req.body.level || '')
     const lateAfter = String(req.body.lateAfter || '')
+    if (!LATE_KEY[level]) return res.status(400).json({ ok: false, error: 'Indica el nivel: Primaria o Secundaria.' })
     if (!isTime(lateAfter)) return res.status(400).json({ ok: false, error: 'Indica una hora válida (HH:MM).' })
-    await getPool().query('INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', ['attendance_late_after', lateAfter])
-    res.json({ ok: true, lateAfter })
+    await getPool().query('INSERT INTO app_settings (k, v) VALUES (?, ?) ON DUPLICATE KEY UPDATE v = VALUES(v)', [LATE_KEY[level], lateAfter])
+    res.json({ ok: true, level, lateAfter, lateAfterByLevel: await lateAfterByLevel() })
   }))
 
   /* ---------- Students ---------- */
@@ -435,7 +457,7 @@ export function attendanceRouter() {
     res.json({
       ok: true,
       date,
-      lateAfter: await getSetting('attendance_late_after', '07:45'),
+      lateAfterByLevel: await lateAfterByLevel(),
       totals: { total, present, late, absent: Math.max(0, total - present - late) },
       levels,
       recent: recent.map(mapRecord),
@@ -461,7 +483,7 @@ export function attendanceRouter() {
         record: mapRecord({ ...existing[0], ...student, id: existing[0].id }),
       })
     }
-    const lateAfter = await getSetting('attendance_late_after', '07:45')
+    const lateAfter = await lateAfterFor(student.level)
     const status = time > lateAfter ? 'tardanza' : 'presente'
     const connection = await getPool().getConnection()
     try {
@@ -562,20 +584,17 @@ export function attendanceRouter() {
         WHERE a.date BETWEEN ? AND ? AND ${where}`,
       [from, to, ...params],
     )
-    const lateAfter = await getSetting('attendance_late_after', '07:45')
+    const lateAfter = await lateAfterByLevel()
     const { time: nowTime } = nowLima()
     const byKey = new Map(records.map((row) => [`${row.student_id}|${String(row.date).slice(0, 10)}`, mapRecord(row)]))
     const rows = []
     for (const day of days) {
-      // Today's absences only count once the late threshold has passed.
-      if (day === today && nowTime <= lateAfter) {
-        for (const record of records) if (String(record.date).slice(0, 10) === day) rows.push(byKey.get(`${record.student_id}|${day}`))
-        continue
-      }
       for (const student of students) {
         const record = byKey.get(`${student.id}|${day}`)
         // No implicit absences before the student was enrolled in the system.
         if (!record && day < String(student.created_at).slice(0, 10)) continue
+        // Today's absences only count once the late threshold of the student's level has passed.
+        if (!record && day === today && nowTime <= (lateAfter[student.level] || lateAfter.Secundaria)) continue
         rows.push(record || mapRecord({ ...student, id: null, student_id: student.id, date: day, time: null, status: 'inasistencia', justified: 0, method: 'sistema', note: '' }))
       }
     }
